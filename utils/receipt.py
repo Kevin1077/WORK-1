@@ -24,27 +24,27 @@ SHOP_TAGLINE = "Professional Laundry Services"
 def _styles():
     return {
         "title": ParagraphStyle(
-            "title", fontSize=20, fontName="Helvetica-Bold",
-            alignment=TA_CENTER, textColor=colors.black, spaceAfter=2
+            "title", fontSize=20, leading=24, fontName="Helvetica-Bold",
+            alignment=TA_CENTER, textColor=colors.black, spaceAfter=4
         ),
         "tagline": ParagraphStyle(
-            "tagline", fontSize=9, fontName="Helvetica-Oblique",
-            alignment=TA_CENTER, textColor=colors.black, spaceAfter=6
+            "tagline", fontSize=9, leading=12, fontName="Helvetica-Oblique",
+            alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
         ),
         "section": ParagraphStyle(
-            "section", fontSize=9, fontName="Helvetica-Bold",
-            textColor=colors.black, spaceBefore=4, spaceAfter=2
+            "section", fontSize=9.5, leading=13, fontName="Helvetica-Bold",
+            textColor=colors.black, spaceBefore=4, spaceAfter=3
         ),
         "normal": ParagraphStyle(
-            "normal", fontSize=8.5, fontName="Helvetica",
-            textColor=colors.black, leading=13
+            "normal", fontSize=8.5, leading=13, fontName="Helvetica",
+            textColor=colors.black
         ),
         "footer": ParagraphStyle(
-            "footer", fontSize=8, fontName="Helvetica-Oblique",
+            "footer", fontSize=8, leading=11, fontName="Helvetica-Oblique",
             alignment=TA_CENTER, textColor=colors.black
         ),
         "total_label": ParagraphStyle(
-            "total_label", fontSize=10, fontName="Helvetica-Bold",
+            "total_label", fontSize=10, leading=13, fontName="Helvetica-Bold",
             alignment=TA_RIGHT, textColor=colors.black
         ),
     }
@@ -83,10 +83,12 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
 
     # ── Header ────────────────────────────────────────────────────────────────
     story.append(Paragraph(SHOP_NAME, st["title"]))
+    story.append(Spacer(1, 1 * mm))
     story.append(Paragraph(SHOP_TAGLINE, st["tagline"]))
+    story.append(Spacer(1, 2 * mm))
     story.append(_thick_hr())
 
-    # ── Order meta ────────────────────────────────────────────────────────────
+    # ── Order Details ─────────────────────────────────────────────────────────
     order_date = order_data.get("order_date", "")
     try:
         from datetime import datetime
@@ -96,27 +98,19 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
 
     payment = order_data.get("payment_method", "") or "—"
 
-    meta_data = [
-        [Paragraph(f"<b>Order #: {order_data['order_id']}</b>", st["normal"]),
-         Paragraph(f"<b>Date:</b> {order_date}", st["normal"])],
-        [Paragraph(f"<b>Status:</b> {order_data.get('status','')}", st["normal"]),
-         Paragraph(f"<b>Payment:</b> {payment}", st["normal"])],
-    ]
-    meta_table = Table(meta_data, colWidths=[70 * mm, 70 * mm])
-    meta_table.setStyle(TableStyle([
-        ("PADDING", (0, 0), (-1, -1), 2),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    story.append(meta_table)
+    story.append(Paragraph("Order Details", st["section"]))
+    story.append(Paragraph(f"Order #: {order_data['order_id']}", st["normal"]))
+    story.append(Paragraph(f"Date   : {order_date}", st["normal"]))
+    story.append(Paragraph(f"Payment: {payment}", st["normal"]))
     story.append(Spacer(1, 3 * mm))
     story.append(_hr())
 
-    # ── Customer ──────────────────────────────────────────────────────────────
+    # ── Customer Details ──────────────────────────────────────────────────────
     story.append(Paragraph("Customer Details", st["section"]))
-    story.append(Paragraph(f"Name : {order_data.get('name','')}", st["normal"]))
-    story.append(Paragraph(f"Phone: {order_data.get('phone','')}", st["normal"]))
+    story.append(Paragraph(f"Name   : {order_data.get('name','')}", st["normal"]))
+    story.append(Paragraph(f"Phone  : {order_data.get('phone','')}", st["normal"]))
     if order_data.get("place"):
-        story.append(Paragraph(f"Place: {order_data['place']}", st["normal"]))
+        story.append(Paragraph(f"Place  : {order_data['place']}", st["normal"]))
     if order_data.get("address"):
         story.append(Paragraph(f"Address: {order_data['address']}", st["normal"]))
     story.append(Spacer(1, 3 * mm))
@@ -126,7 +120,7 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
     story.append(Paragraph("Order Items", st["section"]))
     story.append(Spacer(1, 1 * mm))
 
-    header = ["S.No", "Item", "Qty", "Rate (₹)", "Total (₹)"]
+    header = ["S.No", "Item", "Qty", "Rate", "Total"]
     rows = [header]
     for i, item in enumerate(order_data.get("items", []), start=1):
         item_num = item.get("item_number", i)
@@ -134,14 +128,15 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
             str(item_num),
             item["cloth_type"],
             str(item["quantity"]),
-            f"\u20b9{item['price_per_unit']:.2f}",
-            f"\u20b9{item['subtotal']:.2f}",
+            f"{item['price_per_unit']:.2f}",
+            f"{item['subtotal']:.2f}",
         ])
     # Grand total row
-    rows.append(["", "", "", "GRAND TOTAL", f"\u20b9{order_data.get('total_amount', 0):.2f}"])
+    rows.append(["", "", "", "GRAND TOTAL", f"{order_data.get('total_amount', 0):.2f}"])
 
-    col_w = [18 * mm, 45 * mm, 18 * mm, 27 * mm, 27 * mm]
-    tbl = Table(rows, colWidths=col_w)
+    # Total usable width on A5 with 14mm margins on both sides: 148mm - 28mm = 120mm
+    col_w = [14 * mm, 42 * mm, 16 * mm, 24 * mm, 24 * mm]
+    tbl = Table(rows, colWidths=col_w, hAlign='LEFT')
     tbl.setStyle(TableStyle([
         # Header row — black bg, white text
         ("BACKGROUND", (0, 0), (-1, 0), colors.black),
@@ -166,8 +161,8 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
         # Padding
         ("TOPPADDING",    (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
     ]))
     story.append(tbl)
     story.append(Spacer(1, 4 * mm))
