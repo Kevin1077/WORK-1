@@ -75,6 +75,8 @@ class AllOrdersFrame(tk.Frame):
         self._ctx_menu.add_command(label="✏️  Edit Order",  command=self._edit_selected)
         self._ctx_menu.add_separator()
         self._ctx_menu.add_command(label="🖨️  Print Receipt", command=self._print_selected)
+        self._ctx_menu.add_command(label="📲  WhatsApp Receipt (PDF)", command=self._whatsapp_selected)
+        self._ctx_menu.add_command(label="🏷️  Print Dispatch Slip", command=self._print_dispatch_selected)
         self._ctx_menu.add_separator()
         self._ctx_menu.add_command(label="✅ Mark as Ready",     command=lambda: self._quick_status("Ready"))
         self._ctx_menu.add_command(label="📦 Mark as Delivered",  command=lambda: self._quick_status("Delivered"))
@@ -155,12 +157,46 @@ class AllOrdersFrame(tk.Frame):
             except Exception as e:
                 messagebox.showerror("Print Error", str(e), parent=self)
 
+    def _whatsapp_selected(self):
+        oid = self._get_selected_id()
+        if not oid:
+            return
+        order = db.get_order_full(oid)
+        if order:
+            try:
+                from utils.receipt import send_whatsapp_receipt
+                send_whatsapp_receipt(order, parent_window=self)
+            except Exception as e:
+                messagebox.showerror("WhatsApp Error", str(e), parent=self)
+
+    def _print_dispatch_selected(self):
+        oid = self._get_selected_id()
+        if not oid:
+            return
+        order = db.get_order_full(oid)
+        if order:
+            try:
+                from utils.dispatch_slip import open_dispatch_slip
+                open_dispatch_slip(order)
+            except Exception as e:
+                messagebox.showerror("Print Error", str(e), parent=self)
+
     def _quick_status(self, status):
         oid = self._get_selected_id()
         if not oid:
             return
+        order = db.get_order_full(oid)
+        became_ready = order and order.get("status") != "Ready" and status == "Ready"
         db.update_order_status(oid, status)
         self.refresh()
+        if became_ready:
+            try:
+                from utils.receipt import prompt_whatsapp_ready_notification
+                prompt_whatsapp_ready_notification(
+                    db.get_order_full(oid), parent_window=self
+                )
+            except Exception as exc:
+                messagebox.showerror("WhatsApp Error", str(exc), parent=self)
 
     def _delete_selected(self):
         oid = self._get_selected_id()

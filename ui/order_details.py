@@ -151,10 +151,10 @@ class OrderDetailsPopup(tk.Toplevel):
         # Header row
         hdr_row = tk.Frame(tbl_frame, bg=COLORS["table_header"])
         hdr_row.pack(fill="x")
-        for text, w in [("S.No", 50), ("Cloth Type", 200), ("Qty", 60), ("Price/Unit (₹)", 130), ("Subtotal (₹)", 130)]:
+        for text, w in [("S.No", 50), ("Cloth Type", 150), ("Qty", 50), ("Price/Unit (₹)", 110), ("Subtotal (₹)", 110), ("Remarks", 120)]:
             tk.Label(hdr_row, text=text, bg=COLORS["table_header"],
                      fg=COLORS["accent"], font=FONTS["small_bold"],
-                     width=w // 10, anchor="w", padx=10, pady=6).pack(side="left")
+                     width=w // 10, anchor="w", padx=8, pady=6).pack(side="left")
 
         # Item rows
         for i, item in enumerate(o.get("items", []), start=1):
@@ -164,15 +164,16 @@ class OrderDetailsPopup(tk.Toplevel):
             item_num = item.get("item_number", i)
             vals = [
                 (str(item_num),                     50),
-                (item["cloth_type"],                200),
-                (str(item["quantity"]),              60),
-                (f"₹{item['price_per_unit']:.2f}",  130),
-                (f"₹{item['subtotal']:.2f}",         130),
+                (item["cloth_type"],                150),
+                (str(item["quantity"]),              50),
+                (f"₹{item['price_per_unit']:.2f}",  110),
+                (f"₹{item['subtotal']:.2f}",         110),
+                (item.get("item_notes", "") or "—", 120),
             ]
             for val, w in vals:
                 tk.Label(row_f, text=val, bg=row_bg,
                          fg=COLORS["text"], font=FONTS["default"],
-                         width=w // 10, anchor="w", padx=10, pady=8).pack(side="left")
+                         width=w // 10, anchor="w", padx=8, pady=8).pack(side="left")
 
         # Total row
         total_row = tk.Frame(tbl_frame, bg=COLORS["accent"])
@@ -189,21 +190,32 @@ class OrderDetailsPopup(tk.Toplevel):
         btn_row = tk.Frame(content, bg=COLORS["bg"])
         btn_row.pack(fill="x")
 
-        make_btn(btn_row, "✏️  Edit Order",  self._edit,   "edit").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "🖨️  Print PDF",  self._print,  "neutral").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "🗑️  Delete",     self._delete, "danger").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "✕  Close",       self.destroy, "neutral").pack(side="right")
+        make_btn(btn_row, "✏️  Edit Order",           self._edit,             "edit").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "🖨️  Print Receipt",       self._print_receipt,    "neutral").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "🏷️  Print Dispatch Slip", self._print_dispatch,   "neutral").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "🗑️  Delete",              self._delete,           "danger").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "✕  Close",                self.destroy,           "neutral").pack(side="right", padx=(8, 0))
+        make_btn(btn_row, "📲  WhatsApp Receipt (PDF)", self._whatsapp_receipt, "success").pack(side="right")
 
     # ── Button handlers ────────────────────────────────────────────────────────
 
     def _save_status(self):
         new_status = self._status_var.get()
+        became_ready = self._order.get("status") != "Ready" and new_status == "Ready"
         db.update_order_status(self.order_id, new_status)
         if self.refresh_cb:
             self.refresh_cb()
         messagebox.showinfo("Status Updated",
-                             f"Order #{self.order_id} status set to '{new_status}'.",
-                             parent=self)
+                            f"Order #{self.order_id} status set to '{new_status}'.",
+                            parent=self)
+        if became_ready:
+            try:
+                from utils.receipt import prompt_whatsapp_ready_notification
+                prompt_whatsapp_ready_notification(
+                    db.get_order_full(self.order_id), parent_window=self
+                )
+            except Exception as exc:
+                messagebox.showerror("WhatsApp Error", str(exc), parent=self)
         self.destroy()
         # Re-open with fresh data
         OrderDetailsPopup(self.master, self.order_id, self.refresh_cb)
@@ -214,11 +226,32 @@ class OrderDetailsPopup(tk.Toplevel):
         EditOrderPopup(self.master, self.order_id, self.refresh_cb)
 
     def _print(self):
+        self._print_receipt()
+
+    def _print_receipt(self):
         order = db.get_order_full(self.order_id)
         if order:
             try:
                 from utils.receipt import open_receipt
                 open_receipt(order)
+            except Exception as e:
+                messagebox.showerror("Print Error", str(e), parent=self)
+
+    def _whatsapp_receipt(self):
+        order = db.get_order_full(self.order_id)
+        if order:
+            try:
+                from utils.receipt import send_whatsapp_receipt
+                send_whatsapp_receipt(order, parent_window=self)
+            except Exception as e:
+                messagebox.showerror("WhatsApp Error", str(e), parent=self)
+
+    def _print_dispatch(self):
+        order = db.get_order_full(self.order_id)
+        if order:
+            try:
+                from utils.dispatch_slip import open_dispatch_slip
+                open_dispatch_slip(order)
             except Exception as e:
                 messagebox.showerror("Print Error", str(e), parent=self)
 

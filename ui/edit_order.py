@@ -60,12 +60,21 @@ class _ItemRow:
             font=FONTS["bold"], width=10, anchor="w"
         ).grid(row=0, column=3, padx=6, pady=5, sticky="w")
 
+        self._notes_var = tk.StringVar(value="")
+        tk.Entry(
+            self.frame, textvariable=self._notes_var, width=16,
+            bg=COLORS["input_bg"], fg=COLORS["text"],
+            insertbackground=COLORS["text"], relief="flat",
+            highlightthickness=1, highlightbackground=COLORS["border2"],
+            highlightcolor=COLORS["accent"], font=FONTS["default"]
+        ).grid(row=0, column=4, padx=6, pady=5, sticky="w")
+
         tk.Button(
             self.frame, text="✕", command=lambda: on_delete(self),
             bg=COLORS["btn_danger"], fg=COLORS["text"],
             font=FONTS["small_bold"], relief="flat", bd=0,
             padx=8, pady=3, cursor="hand2"
-        ).grid(row=0, column=4, padx=(6, 4), pady=5, sticky="w")
+        ).grid(row=0, column=5, padx=(6, 4), pady=5, sticky="w")
 
         self._qty_var.trace_add("write",   lambda *a: on_change())
         self._price_var.trace_add("write", lambda *a: on_change())
@@ -92,12 +101,14 @@ class _ItemRow:
         except ValueError:
             qty, price = 1, 0.0
         return {"cloth_type": cloth, "quantity": qty,
-                "price_per_unit": price, "subtotal": qty * price}
+                "price_per_unit": price, "subtotal": qty * price,
+                "item_notes": self._notes_var.get().strip()}
 
-    def set_data(self, cloth_type, quantity, price_per_unit):
+    def set_data(self, cloth_type, quantity, price_per_unit, item_notes=""):
         self._cloth_var.set(cloth_type)
         self._qty_var.set(str(quantity))
         self._price_var.set(f"{price_per_unit:.2f}")
+        self._notes_var.set(item_notes)
         self.calculate()
 
     def is_valid(self) -> bool:
@@ -252,7 +263,7 @@ class EditOrderPopup(tk.Toplevel):
         # Column headers
         hdr2 = tk.Frame(items_card, bg=COLORS["table_header"])
         hdr2.pack(fill="x", pady=(0, 4), padx=4)
-        for text, w in [("Cloth Type", 16), ("Qty", 6), ("Price/Unit (₹)", 12), ("Subtotal", 10), ("Del", 5)]:
+        for text, w in [("Cloth Type", 16), ("Qty", 6), ("Price/Unit (₹)", 12), ("Subtotal", 10), ("Remarks / Notes", 16), ("Del", 5)]:
             tk.Label(hdr2, text=text, bg=COLORS["table_header"],
                      fg=COLORS["accent"], font=FONTS["small_bold"],
                      width=w, anchor="w", padx=6, pady=6).pack(side="left")
@@ -300,7 +311,7 @@ class EditOrderPopup(tk.Toplevel):
         # Items
         for item in o.get("items", []):
             row = self._add_item_row()
-            row.set_data(item["cloth_type"], item["quantity"], item["price_per_unit"])
+            row.set_data(item["cloth_type"], item["quantity"], item["price_per_unit"], item.get("item_notes", ""))
 
     # ── Item helpers ──────────────────────────────────────────────────────────
 
@@ -364,6 +375,7 @@ class EditOrderPopup(tk.Toplevel):
 
         items  = [r.get_data() for r in self._item_rows]
         status = self._status_var.get()
+        became_ready = self._order.get("status") != "Ready" and status == "Ready"
         notes  = self._notes_var.get().strip()
         payment = self._payment_var.get()
 
@@ -382,6 +394,15 @@ class EditOrderPopup(tk.Toplevel):
             f"Order #{self.order_id} updated successfully!",
             parent=self
         )
+
+        if became_ready:
+            try:
+                from utils.receipt import prompt_whatsapp_ready_notification
+                prompt_whatsapp_ready_notification(
+                    db.get_order_full(self.order_id), parent_window=self
+                )
+            except Exception as exc:
+                messagebox.showerror("WhatsApp Error", str(exc), parent=self)
         if self.refresh_cb:
             self.refresh_cb()
         self.destroy()

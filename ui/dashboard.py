@@ -2,7 +2,7 @@
 ui/dashboard.py — Dashboard home screen with stats cards and recent orders
 """
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from datetime import datetime
 
 from ui.theme   import COLORS, FONTS, STATUS_COLORS
@@ -89,6 +89,23 @@ class DashboardFrame(tk.Frame):
         tree_frame.pack(fill="both", expand=True)
 
         self._tree.bind("<Double-1>", self._on_double_click)
+        self._tree.bind("<Button-3>", self._show_context_menu)
+
+        # Context menu
+        self._ctx_menu = tk.Menu(self, tearoff=0,
+                                  bg=COLORS["card_bg2"],
+                                  fg=COLORS["text"],
+                                  activebackground=COLORS["sidebar_active"],
+                                  activeforeground=COLORS["accent"],
+                                  font=FONTS["default"])
+        self._ctx_menu.add_command(label="📄 View Details", command=self._view_selected)
+        self._ctx_menu.add_command(label="✏️  Edit Order",  command=self._edit_selected)
+        self._ctx_menu.add_separator()
+        self._ctx_menu.add_command(label="📲  WhatsApp Receipt (PDF)", command=self._whatsapp_selected)
+        self._ctx_menu.add_command(label="🖨️  Print Receipt", command=self._print_selected)
+        self._ctx_menu.add_command(label="🏷️  Print Dispatch Slip", command=self._print_dispatch_selected)
+        self._ctx_menu.add_separator()
+        self._ctx_menu.add_command(label="🗑️  Delete Order",  command=self._delete_selected)
 
         # Status tags
         for status, color in STATUS_COLORS.items():
@@ -150,12 +167,80 @@ class DashboardFrame(tk.Frame):
         except Exception:
             pass  # DB not ready yet on very first init call
 
-    def _on_double_click(self, event):
+    def _get_selected_id(self):
         sel = self._tree.focus()
-        if not sel:
+        return int(sel) if sel else None
+
+    def _on_double_click(self, event):
+        oid = self._get_selected_id()
+        if oid:
+            _open_details(self, oid, self.refresh)
+
+    def _show_context_menu(self, event):
+        item = self._tree.identify_row(event.y)
+        if item:
+            self._tree.selection_set(item)
+            self._tree.focus(item)
+            self._ctx_menu.post(event.x_root, event.y_root)
+
+    def _view_selected(self):
+        oid = self._get_selected_id()
+        if oid:
+            _open_details(self, oid, self.refresh)
+
+    def _edit_selected(self):
+        oid = self._get_selected_id()
+        if oid:
+            from ui.edit_order import EditOrderPopup
+            EditOrderPopup(self, oid, self.refresh)
+
+    def _print_selected(self):
+        oid = self._get_selected_id()
+        if not oid:
             return
-        order_id = int(sel)
-        _open_details(self, order_id, self.refresh)
+        order = db.get_order_full(oid)
+        if order:
+            try:
+                from utils.receipt import open_receipt
+                open_receipt(order)
+            except Exception as e:
+                messagebox.showerror("Print Error", str(e), parent=self)
+
+    def _whatsapp_selected(self):
+        oid = self._get_selected_id()
+        if not oid:
+            return
+        order = db.get_order_full(oid)
+        if order:
+            try:
+                from utils.receipt import send_whatsapp_receipt
+                send_whatsapp_receipt(order, parent_window=self)
+            except Exception as e:
+                messagebox.showerror("WhatsApp Error", str(e), parent=self)
+
+    def _print_dispatch_selected(self):
+        oid = self._get_selected_id()
+        if not oid:
+            return
+        order = db.get_order_full(oid)
+        if order:
+            try:
+                from utils.dispatch_slip import open_dispatch_slip
+                open_dispatch_slip(order)
+            except Exception as e:
+                messagebox.showerror("Print Error", str(e), parent=self)
+
+    def _delete_selected(self):
+        oid = self._get_selected_id()
+        if not oid:
+            return
+        if messagebox.askyesno(
+            "Delete Order",
+            f"Are you sure you want to permanently delete Order #{oid}?\nThis cannot be undone.",
+            parent=self
+        ):
+            db.delete_order(oid)
+            self.refresh()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

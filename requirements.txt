@@ -1,3 +1,7 @@
 reportlab
 tkcalendar
 matplotlib
+python-barcode
+pywinauto
+pyperclip
+pywin32

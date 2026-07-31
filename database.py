@@ -49,6 +49,7 @@ def init_db():
             price_per_unit REAL NOT NULL,
             subtotal       REAL NOT NULL,
             item_number    INTEGER NOT NULL DEFAULT 0,
+            item_notes     TEXT DEFAULT '',
             FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
         );
 
@@ -62,6 +63,7 @@ def init_db():
     _migrate_add_column(c, "orders", "payment_method", "TEXT DEFAULT ''")
     _migrate_add_column(c, "orders", "status_changed_at", "TEXT DEFAULT ''")
     _migrate_add_column(c, "order_items", "item_number", "INTEGER NOT NULL DEFAULT 0")
+    _migrate_add_column(c, "order_items", "item_notes", "TEXT DEFAULT ''")
 
     defaults = [
         ("Shirt", 20.0), ("Pants", 30.0), ("Saree", 80.0),
@@ -166,27 +168,31 @@ def create_order(customer_id, order_date, delivery_date, items, notes="", paymen
         oid = cur.lastrowid
         for idx, it in enumerate(items, start=1):
             conn.execute(
-                "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (oid, it["cloth_type"], it["quantity"], it["price_per_unit"], it["subtotal"], idx)
+                "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number, item_notes) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (oid, it["cloth_type"], it["quantity"], it["price_per_unit"], it["subtotal"], idx, it.get("item_notes", ""))
             )
     return oid
 
 
 def update_order(order_id, customer_id, order_date, delivery_date, items, notes, status, payment_method=""):
     total = sum(i["subtotal"] for i in items)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as conn:
         conn.execute(
             "UPDATE orders SET customer_id=?, order_date=?, delivery_date=?, "
-            "total_amount=?, notes=?, status=?, payment_method=? WHERE order_id=?",
-            (customer_id, order_date, delivery_date or "", total, notes, status, payment_method, order_id)
+            "total_amount=?, notes=?, status=?, payment_method=?, "
+            "status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END "
+            "WHERE order_id=?",
+            (customer_id, order_date, delivery_date or "", total, notes, status,
+             payment_method, status, now, order_id)
         )
         conn.execute("DELETE FROM order_items WHERE order_id=?", (order_id,))
         for idx, it in enumerate(items, start=1):
             conn.execute(
-                "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (order_id, it["cloth_type"], it["quantity"], it["price_per_unit"], it["subtotal"], idx)
+                "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number, item_notes) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (order_id, it["cloth_type"], it["quantity"], it["price_per_unit"], it["subtotal"], idx, it.get("item_notes", ""))
             )
 
 

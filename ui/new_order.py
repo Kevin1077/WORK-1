@@ -71,13 +71,24 @@ class _ItemRow:
             font=FONTS["bold"], width=10, anchor="w"
         ).grid(row=0, column=3, padx=6, pady=5, sticky="w")
 
+        # Remarks / Item Notes (optional)
+        self._notes_var = tk.StringVar(value="")
+        notes_e = tk.Entry(
+            self.frame, textvariable=self._notes_var, width=16,
+            bg=COLORS["input_bg"], fg=COLORS["text"],
+            insertbackground=COLORS["text"], relief="flat",
+            highlightthickness=1, highlightbackground=COLORS["border2"],
+            highlightcolor=COLORS["accent"], font=FONTS["default"]
+        )
+        notes_e.grid(row=0, column=4, padx=6, pady=5, sticky="w")
+
         # Delete button
         tk.Button(
             self.frame, text="✕", command=lambda: on_delete(self),
             bg=COLORS["btn_danger"], fg=COLORS["btn_danger_fg"],
             font=FONTS["small_bold"], relief="flat", bd=0,
             padx=8, pady=3, cursor="hand2"
-        ).grid(row=0, column=4, padx=(6, 4), pady=5, sticky="w")
+        ).grid(row=0, column=5, padx=(6, 4), pady=5, sticky="w")
 
         # Traces
         self._qty_var.trace_add("write",   lambda *a: on_change())
@@ -133,12 +144,14 @@ class _ItemRow:
             "quantity":      qty,
             "price_per_unit": price,
             "subtotal":      qty * price,
+            "item_notes":    self._notes_var.get().strip(),
         }
 
-    def set_data(self, cloth_type, quantity, price_per_unit):
+    def set_data(self, cloth_type, quantity, price_per_unit, item_notes=""):
         self._cloth_var.set(cloth_type)
         self._qty_var.set(str(quantity))
         self._price_var.set(f"{price_per_unit:.2f}")
+        self._notes_var.set(item_notes)
         self.calculate()
 
     def is_valid(self) -> bool:
@@ -320,7 +333,7 @@ class NewOrderFrame(tk.Frame):
         # Column headers
         hdr = tk.Frame(self._items_card, bg=COLORS["table_header"])
         hdr.pack(fill="x", pady=(0, 4), padx=4)
-        for text, w in [("Cloth Type", 16), ("Qty", 6), ("Price/Unit (₹)", 12), ("Subtotal", 10), ("Del", 5)]:
+        for text, w in [("Cloth Type", 16), ("Qty", 6), ("Price/Unit (₹)", 12), ("Subtotal", 10), ("Remarks / Notes", 16), ("Del", 5)]:
             tk.Label(hdr, text=text, bg=COLORS["table_header"],
                      fg=COLORS["accent"], font=FONTS["small_bold"],
                      width=w, anchor="w", padx=6, pady=6).pack(side="left")
@@ -489,22 +502,77 @@ class NewOrderFrame(tk.Frame):
             messagebox.showerror("Database Error", str(ex), parent=self)
             return
 
-        # Success
-        ask = messagebox.askyesno(
-            "Order Created",
-            f"✅ Order #{oid} created successfully!\n\n"
-            f"Customer: {name}\n"
-            f"Total: ₹{sum(i['subtotal'] for i in items):.2f}\n\n"
-            "Print receipt now?",
-            parent=self
-        )
-        if ask:
-            order = db.get_order_full(oid)
+        # Success - Prompt print options
+        order = db.get_order_full(oid)
+        self._prompt_print_options(order)
+        self._reset()
+
+    def _prompt_print_options(self, order):
+        """Display dialog allowing staff to print receipt, dispatch slips, or both."""
+        win = tk.Toplevel(self)
+        win.title("Order Created Successfully")
+        win.configure(bg=COLORS["bg"])
+        win.resizable(False, False)
+        win.grab_set()
+
+        w, h = 420, 260
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry(f"{w}x{h}+{(sw - w)//2}+{(sh - h)//2}")
+
+        hdr = tk.Frame(win, bg=COLORS["card_bg"], padx=20, pady=16)
+        hdr.pack(fill="x")
+        tk.Label(
+            hdr, text=f"✅ Order #{order['order_id']} Created",
+            bg=COLORS["card_bg"], fg=COLORS["accent"], font=FONTS["title"]
+        ).pack(anchor="w")
+        tk.Label(
+            hdr, text=f"Customer: {order['name']} | Total: ₹{order['total_amount']:.2f}",
+            bg=COLORS["card_bg"], fg=COLORS["text_dim"], font=FONTS["small"]
+        ).pack(anchor="w", pady=(4, 0))
+
+        body = tk.Frame(win, bg=COLORS["bg"], padx=20, pady=16)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(
+            body, text="Select print action for this order:",
+            bg=COLORS["bg"], fg=COLORS["text"], font=FONTS["bold"]
+        ).pack(anchor="w", pady=(0, 12))
+
+        btn_f = tk.Frame(body, bg=COLORS["bg"])
+        btn_f.pack(fill="x")
+
+        def _print_rec():
             try:
                 from utils.receipt import open_receipt
                 open_receipt(order)
             except Exception as e:
-                messagebox.showerror("Print Error", str(e), parent=self)
+                messagebox.showerror("Print Error", str(e), parent=win)
+
+        def _whatsapp_rec():
+            try:
+                from utils.receipt import send_whatsapp_receipt
+                send_whatsapp_receipt(order, parent_window=win)
+            except Exception as e:
+                messagebox.showerror("WhatsApp Error", str(e), parent=win)
+
+        def _print_disp():
+            try:
+                from utils.dispatch_slip import open_dispatch_slip
+                open_dispatch_slip(order)
+            except Exception as e:
+                messagebox.showerror("Print Error", str(e), parent=win)
+
+        def _print_both():
+            _print_rec()
+            _print_disp()
+
+        make_btn(btn_f, "🖨️ Receipt", _print_rec, "neutral").pack(side="left", padx=(0, 6))
+        make_btn(btn_f, "📲 WhatsApp", _whatsapp_rec, "success").pack(side="left", padx=(0, 6))
+        make_btn(btn_f, "🏷️ Dispatch", _print_disp, "neutral").pack(side="left", padx=(0, 6))
+
+        close_f = tk.Frame(body, bg=COLORS["bg"])
+        close_f.pack(fill="x", pady=(16, 0))
+        make_btn(close_f, "Done", win.destroy, "neutral").pack(side="right")
 
         self._reset()
 
