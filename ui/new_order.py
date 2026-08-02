@@ -41,14 +41,17 @@ class _ItemRow:
         self._cloth_var.trace_add("write", lambda *a: self._on_cloth_type())
         self._cloth_cb.bind("<<ComboboxSelected>>", lambda e: self._on_cloth_select())
 
-        # Quantity
+        # Quantity with up/down spin arrows
         self._qty_var = tk.StringVar(value="1")
-        qty_e = tk.Entry(
-            self.frame, textvariable=self._qty_var, width=6,
+        qty_e = tk.Spinbox(
+            self.frame, from_=1, to=999, increment=1,
+            textvariable=self._qty_var, width=5,
             bg=COLORS["input_bg"], fg=COLORS["text"],
             insertbackground=COLORS["text"], relief="flat",
             highlightthickness=1, highlightbackground=COLORS["border2"],
-            highlightcolor=COLORS["accent"], font=FONTS["default"]
+            highlightcolor=COLORS["accent"], font=FONTS["default"],
+            buttonbackground=COLORS["card_bg2"],
+            command=on_change,
         )
         qty_e.grid(row=0, column=1, padx=6, pady=5, sticky="w")
 

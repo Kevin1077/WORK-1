@@ -207,16 +207,22 @@ def _find_chat_result(window, phone: str):
     # Some Desktop builds expose number-search results as a Button or Text
     # rather than a ListItem. Never inspect Edit controls here: the search box
     # itself contains the typed phone number and is not a result.
-    for control in window.descendants():
+    # Query only the three types we actually check — avoids iterating every
+    # UIA element and reduces the chance of hitting stale COM objects.
+    for ct in ("Button", "Text", "Hyperlink"):
         try:
-            control_type = control.element_info.control_type
-            if control_type not in {"Button", "Text", "Hyperlink"}:
-                continue
-            name = re.sub(r"\D", "", control.window_text())
-            if compact in name or phone in name:
-                return control
-        except Exception:
+            candidates = window.descendants(control_type=ct)
+        except (Exception, OSError):
             continue
+        for control in candidates:
+            try:
+                name = re.sub(r"\D", "", control.window_text())
+                if compact in name or phone in name:
+                    return control
+            except (Exception, OSError):
+                # _ctypes.COMError is an OSError subclass; catch both so a
+                # stale / transient UIA element doesn't abort the whole search.
+                continue
     return None
 
 
@@ -361,8 +367,16 @@ def _paste_into(control, text: str) -> None:
     if not control:
         raise WhatsAppDesktopError("Required WhatsApp UI control was not found.")
     try:
-        control.set_focus()
+        # set_focus() may raise _ctypes.COMError (an OSError subclass) when the
+        # UIA element handle goes stale between find-time and use-time on
+        # WhatsApp Desktop v2.x.  The clipboard+SendKeys paste still works in
+        # most cases even without an explicit focus call, so we catch and log
+        # rather than raising.
+        try:
+            control.set_focus()
+        except (Exception, OSError) as focus_exc:
+            LOGGER.debug("set_focus() failed (continuing): %s", focus_exc)
         pyperclip.copy(text)
         keyboard.send_keys("^v")
-    except Exception as exc:
+    except (Exception, OSError) as exc:
         raise WhatsAppDesktopError("Could not paste text into WhatsApp Desktop.") from exc

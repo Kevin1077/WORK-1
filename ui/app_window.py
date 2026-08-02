@@ -217,7 +217,7 @@ class AppWindow:
 
     def _tick(self):
         self._clock.config(
-            text=datetime.now().strftime("📅 %d-%m-%Y  🕐 %H:%M:%S"),
+            text=datetime.now().strftime("%d-%m-%Y   %H:%M:%S"),
             fg=COLORS["text_muted"],
         )
         self.root.after(1000, self._tick)

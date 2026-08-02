@@ -211,10 +211,21 @@ def normalize_whatsapp_phone(phone: object) -> str:
     return digits
 
 
+def _valid_parent(parent_window):
+    """Return parent_window if it exists and is not destroyed, else None."""
+    if parent_window is not None:
+        try:
+            if hasattr(parent_window, "winfo_exists") and parent_window.winfo_exists():
+                return parent_window
+        except Exception:
+            pass
+    return None
+
+
 def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
     """
-    Generate the normal receipt PDF, then prepare a WhatsApp Desktop chat.
-    Staff attach the already-open PDF manually, avoiding brittle browser automation.
+    Generate the normal receipt PDF, then prepare a WhatsApp Web chat.
+    Staff attach the PDF and message, ready for review.
     """
     from tkinter import messagebox
 
@@ -234,7 +245,7 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
         messagebox.showerror(
             "WhatsApp Error",
             str(exc),
-            parent=parent_window
+            parent=_valid_parent(parent_window)
         )
         return None
 
@@ -242,28 +253,12 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
     # layout or WhatsApp-specific receipt is created.
     pdf_path = generate_receipt(order_data)
 
-    # 3. Format receipt message
-    order_date = order_data.get("order_date", "")
-    try:
-        from datetime import datetime
-        order_date = datetime.strptime(order_date, "%Y-%m-%d").strftime("%d-%m-%Y")
-    except Exception:
-        pass
-
-    items_list = []
-    for item in order_data.get("items", []):
-        items_list.append(f" • {item['cloth_type']} (x{item['quantity']}) - ₹{item['subtotal']:.2f}")
-    items_str = "\n".join(items_list) if items_list else " —"
-
+    # 3. Format simplified receipt message (detailed breakdown is in the PDF)
+    customer_name = order_data.get("name") or "Customer"
+    order_id = order_data.get("order_id", "")
     caption = (
-        f"🧺 *Victory Laundry — Order Receipt*\n\n"
-        f"*Order #:* #{order_data['order_id']}\n"
-        f"*Date:* {order_date}\n"
-        f"*Customer:* {order_data.get('name', '')}\n"
-        f"*Status:* {order_data.get('status', 'Received')}\n\n"
-        f"*Items Purchased:*\n{items_str}\n\n"
-        f"*Grand Total:* ₹{order_data.get('total_amount', 0):.2f}\n"
-        f"*Payment Method:* {order_data.get('payment_method', '') or '—'}\n\n"
+        f"Hello {customer_name},\n\n"
+        f"Here is your receipt for Order #{order_id}.\n\n"
         f"Thank you for choosing Victory Laundry!"
     )
 
@@ -272,13 +267,13 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
 
 
 def send_whatsapp_ready_notification(order_data: dict, parent_window=None) -> bool:
-    """Prepare a WhatsApp Desktop ready-order notification for staff to send."""
+    """Prepare a WhatsApp Web ready-order notification for staff to send."""
     from tkinter import messagebox
 
     try:
         digits = normalize_whatsapp_phone(order_data.get("phone"))
     except ValueError as exc:
-        messagebox.showerror("WhatsApp Error", str(exc), parent=parent_window)
+        messagebox.showerror("WhatsApp Error", str(exc), parent=_valid_parent(parent_window))
         return False
 
     customer = order_data.get("name") or "Customer"
@@ -302,39 +297,41 @@ def prompt_whatsapp_ready_notification(order_data: dict, parent_window=None) -> 
         "Order Ready",
         f"Order #{order_id} is now Ready.\n\n"
         f"Send a WhatsApp notification to {customer}?",
-        parent=parent_window,
+        parent=_valid_parent(parent_window),
     ):
         return False
     return send_whatsapp_ready_notification(order_data, parent_window)
 
 
 def _open_whatsapp_receipt_manual(digits: str, caption: str, pdf_path: str, parent_window=None):
-    """Prepare a receipt in WhatsApp Desktop without sending it automatically."""
+    """Prepare a receipt in WhatsApp Web with PDF attached without sending it automatically."""
     from tkinter import messagebox
     try:
-        from whatsapp_desktop import send_receipt
+        from whatsapp_web import send_receipt
         send_receipt(digits, pdf_path, caption)
     except Exception as exc:
-        messagebox.showerror("WhatsApp Desktop Error", str(exc), parent=parent_window)
+        messagebox.showerror("WhatsApp Web Error", str(exc), parent=_valid_parent(parent_window))
         return
     messagebox.showinfo(
         "WhatsApp Receipt Ready",
-        "The receipt PDF and message are ready in WhatsApp Desktop. Review them and press Send.",
-        parent=parent_window,
+        "The customer chat has opened in WhatsApp Web with the PDF receipt attached!\n\n"
+        "Please review the message and press Send.",
+        parent=_valid_parent(parent_window),
     )
 
 
 def _open_whatsapp_text_manual(digits: str, message: str, parent_window=None):
-    """Prepare a ready-order notification in WhatsApp Desktop."""
+    """Prepare a ready-order notification in WhatsApp Web."""
     from tkinter import messagebox
     try:
-        from whatsapp_desktop import prepare_message
+        from whatsapp_web import prepare_message
         prepare_message(digits, message)
     except Exception as exc:
-        messagebox.showerror("WhatsApp Desktop Error", str(exc), parent=parent_window)
+        messagebox.showerror("WhatsApp Web Error", str(exc), parent=_valid_parent(parent_window))
         return
     messagebox.showinfo(
         "WhatsApp Notification Ready",
-        "The ready-order notification is prepared in WhatsApp Desktop. Review it and press Send.",
-        parent=parent_window,
+        "The customer chat has opened in WhatsApp Web with the notification message pre-filled.\n\n"
+        "Please review the message and press Send.",
+        parent=_valid_parent(parent_window),
     )

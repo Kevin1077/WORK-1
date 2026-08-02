@@ -5,3 +5,5 @@ python-barcode
 pywinauto
 pyperclip
 pywin32
+playwright
+

@@ -244,7 +244,8 @@ class OrderDetailsPopup(tk.Toplevel):
                 from utils.receipt import send_whatsapp_receipt
                 send_whatsapp_receipt(order, parent_window=self)
             except Exception as e:
-                messagebox.showerror("WhatsApp Error", str(e), parent=self)
+                p = self if hasattr(self, "winfo_exists") and self.winfo_exists() else None
+                messagebox.showerror("WhatsApp Error", str(e), parent=p)
 
     def _print_dispatch(self):
         order = db.get_order_full(self.order_id)
