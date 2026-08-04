@@ -51,6 +51,7 @@ _SEL_ATTACH_PREVIEW = (
     "div[data-testid='upload-progress'],"        # upload in progress
     "span[data-icon='send']"                     # send button on preview
 )
+_SEL_QR = "canvas, div[data-ref], [data-testid='qrcode']"
 
 
 # ── Custom exceptions ──────────────────────────────────────────────────────────
@@ -109,8 +110,12 @@ def _get_context():
 
     if _context is not None:
         try:
-            _ = _context.pages  # raises if the browser process has died
-            return _context
+            if not _context.is_closed():
+                _ = _context.pages  # raises if the browser process has died
+                return _context
+            else:
+                LOGGER.warning("Previous browser context was closed — restarting.")
+                _context = None
         except Exception:
             LOGGER.warning("Previous browser context is dead — restarting.")
             _context = None
@@ -144,15 +149,32 @@ def _get_context():
     }
 
     try:
-        ctx = _playwright.chromium.launch_persistent_context(
-            channel="chrome",
-            **launch_args
-        )
-    except Exception:
-        LOGGER.info("System Chrome launch failed, using bundled Chromium.")
-        ctx = _playwright.chromium.launch_persistent_context(
-            **launch_args
-        )
+        try:
+            ctx = _playwright.chromium.launch_persistent_context(
+                channel="chrome",
+                **launch_args
+            )
+        except Exception:
+            LOGGER.info("System Chrome launch failed, using bundled Chromium.")
+            ctx = _playwright.chromium.launch_persistent_context(
+                **launch_args
+            )
+    except Exception as exc:
+        LOGGER.warning("Failed to launch context with existing playwright driver, restarting driver: %s", exc)
+        try:
+            _playwright.stop()
+        except Exception:
+            pass
+        _playwright = sync_playwright().start()
+        try:
+            ctx = _playwright.chromium.launch_persistent_context(
+                channel="chrome",
+                **launch_args
+            )
+        except Exception:
+            ctx = _playwright.chromium.launch_persistent_context(
+                **launch_args
+            )
 
     _context = ctx
     return ctx
@@ -161,37 +183,55 @@ def _get_context():
 def _get_page():
     """Return the WhatsApp Web page, reusing an existing tab if possible."""
     ctx = _get_context()
-    for page in ctx.pages:
-        if "web.whatsapp.com" in page.url:
-            try:
-                page.bring_to_front()
-            except Exception:
-                pass
-            return page
-    page = ctx.new_page()
     try:
-        page.bring_to_front()
-    except Exception:
-        pass
-    return page
+        for page in ctx.pages:
+            if not page.is_closed() and "web.whatsapp.com" in page.url:
+                try:
+                    page.bring_to_front()
+                except Exception:
+                    pass
+                return page
+        page = ctx.new_page()
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+        return page
+    except Exception as exc:
+        LOGGER.warning("Error getting page from context, retrying with fresh context: %s", exc)
+        global _context
+        _context = None
+        ctx = _get_context()
+        page = ctx.new_page()
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+        return page
+
+
+
 
 
 # ── Login / QR handling ────────────────────────────────────────────────────────
 
 def _ensure_logged_in(page) -> None:
-    """Block until WhatsApp Web shows the chat list (logged in)."""
+    """Block until WhatsApp Web shows the chat list (logged in) or QR code."""
     if "web.whatsapp.com" not in page.url:
         page.goto("https://web.whatsapp.com", wait_until="domcontentloaded")
 
-    # Fast path: chat list already visible.
+    # Cold load check: wait up to 25s for either chat list OR QR code to appear
+    combined_sel = f"{_SEL_CHAT_SIDE}, {_SEL_QR}"
     try:
-        page.wait_for_selector(_SEL_CHAT_SIDE, timeout=_LOGIN_CHECK_MS)
-        LOGGER.debug("WhatsApp Web: already logged in.")
-        return
+        page.wait_for_selector(combined_sel, timeout=25_000)
+        # Check if chat list is visible (already logged in)
+        if page.query_selector(_SEL_CHAT_SIDE):
+            LOGGER.debug("WhatsApp Web: already logged in.")
+            return
     except Exception:
         pass
 
-    # QR scan needed.
+    # If chat list is not visible, QR scan is required.
     LOGGER.info("WhatsApp Web: QR scan required.")
     _show_qr_dialog()
 
@@ -327,10 +367,15 @@ def send_receipt(phone_number: str, pdf_path: str, message: str) -> None:
     phone   = _normalise_phone(phone_number)
     receipt = _validate_pdf(pdf_path)
 
-    page = _get_page()
-    _ensure_logged_in(page)
-    _open_chat_url(page, phone, message)
-    _attach_pdf(page, receipt)
+    try:
+        page = _get_page()
+        _ensure_logged_in(page)
+        _open_chat_url(page, phone, message)
+        _attach_pdf(page, receipt)
+    except Exception as exc:
+        if "closed" in str(exc).lower():
+            raise WhatsAppWebError("The browser tab was closed before the operation could finish.") from exc
+        raise
 
     LOGGER.info("WhatsApp receipt prepared & attached in %.2fs", time.perf_counter() - t0)
 
@@ -344,13 +389,18 @@ def prepare_message(phone_number: str, message: str) -> None:
     t0 = time.perf_counter()
     phone = _normalise_phone(phone_number)
 
-    page = _get_page()
-    _ensure_logged_in(page)
-    _open_chat_url(page, phone, message)
-
     try:
-        page.bring_to_front()
-    except Exception:
-        pass
+        page = _get_page()
+        _ensure_logged_in(page)
+        _open_chat_url(page, phone, message)
+
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+    except Exception as exc:
+        if "closed" in str(exc).lower():
+            raise WhatsAppWebError("The browser tab was closed before the operation could finish.") from exc
+        raise
 
     LOGGER.info("WhatsApp message prepared in %.2fs", time.perf_counter() - t0)
