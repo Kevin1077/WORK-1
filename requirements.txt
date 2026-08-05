@@ -2,8 +2,7 @@ reportlab
 tkcalendar
 matplotlib
 python-barcode
-pywinauto
-pyperclip
-pywin32
+pillow
 playwright
+
 

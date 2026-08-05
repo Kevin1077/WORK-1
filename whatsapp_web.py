@@ -114,11 +114,23 @@ def _get_context():
                 _ = _context.pages  # raises if the browser process has died
                 return _context
             else:
-                LOGGER.warning("Previous browser context was closed — restarting.")
+                LOGGER.debug("Previous browser context was closed — restarting driver.")
                 _context = None
+                if _playwright is not None:
+                    try:
+                        _playwright.stop()
+                    except Exception:
+                        pass
+                    _playwright = None
         except Exception:
-            LOGGER.warning("Previous browser context is dead — restarting.")
+            LOGGER.debug("Previous browser context is dead — restarting driver.")
             _context = None
+            if _playwright is not None:
+                try:
+                    _playwright.stop()
+                except Exception:
+                    pass
+                _playwright = None
 
     try:
         from playwright.sync_api import sync_playwright
@@ -288,44 +300,53 @@ def _attach_pdf(page, pdf_path: Path) -> None:
     """Attach a PDF document into WhatsApp Web using the Document attachment input."""
     attached = False
 
+    # Ensure composer is ready
+    try:
+        page.wait_for_selector(_SEL_COMPOSER, timeout=5_000)
+    except Exception:
+        pass
+
     # Method 1: Click Attach '+' menu -> 'Document' using Playwright file_chooser
     try:
         LOGGER.debug("Attempting Document attachment via Attach menu...")
-        attach_btn = page.wait_for_selector(_SEL_ATTACH_BTN, timeout=3_000)
+        attach_btn = page.wait_for_selector(_SEL_ATTACH_BTN, timeout=5_000)
         if attach_btn:
             attach_btn.click()
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(500)
 
             doc_option_sel = (
                 "span[data-icon='attach-document'],"
                 "li[data-testid='attach-document'],"
                 "div[aria-label='Document'],"
                 "button[aria-label='Document'],"
-                "div[data-testid='attach-document']"
+                "div[data-testid='attach-document'],"
+                "li:has-text('Document')"
             )
-            doc_option = page.wait_for_selector(doc_option_sel, timeout=3_000)
+            doc_option = page.wait_for_selector(doc_option_sel, timeout=5_000)
             if doc_option:
-                with page.expect_file_chooser(timeout=5_000) as fc_info:
+                with page.expect_file_chooser(timeout=7_000) as fc_info:
                     doc_option.click()
                 file_chooser = fc_info.value
                 file_chooser.set_files(str(pdf_path))
                 LOGGER.info("Successfully attached PDF via Document file chooser.")
                 attached = True
     except Exception as exc:
-        LOGGER.debug("File chooser attachment method failed, using direct DOM targeting fallback: %s", exc)
+        LOGGER.debug("File chooser attachment method failed, trying strict DOM document input targeting: %s", exc)
 
-    # Method 2 (Fallback): Target the document-specific <input type="file"> element
+    # Method 2 (Fallback): Target ONLY document-specific <input type="file"> element (accept="*")
     if not attached:
         try:
+            # Wait for any file input that accepts documents (* or pdf) and NOT restricted to image/video
+            page.wait_for_timeout(500)
             inputs = page.query_selector_all('input[type="file"]')
             target_input = None
+
             for inp in inputs:
                 accept = (inp.get_attribute("accept") or "").lower()
-                if "image" not in accept and "video" not in accept:
+                # Strictly exclude image, video, and audio inputs
+                if "image" not in accept and "video" not in accept and "audio" not in accept:
                     target_input = inp
                     break
-            if not target_input and inputs:
-                target_input = inputs[-1]  # Document input is typically the last file input element
 
             if target_input:
                 page.evaluate("""
@@ -334,10 +355,25 @@ def _attach_pdf(page, pdf_path: Path) -> None:
                     }
                 """, target_input)
                 target_input.set_input_files(str(pdf_path))
-                LOGGER.info("Attached PDF via direct DOM input element targeting.")
+                LOGGER.info("Attached PDF via direct DOM document input element targeting.")
                 attached = True
             else:
-                raise WhatsAppWebError("No document file input found in WhatsApp Web DOM.")
+                # Retry by opening attach menu once more
+                LOGGER.debug("No document input found, opening attach menu again...")
+                attach_btn = page.query_selector(_SEL_ATTACH_BTN)
+                if attach_btn:
+                    attach_btn.click()
+                    page.wait_for_timeout(600)
+                    doc_btn = page.query_selector("span[data-icon='attach-document'], button[aria-label='Document'], li:has-text('Document')")
+                    if doc_btn:
+                        with page.expect_file_chooser(timeout=5_000) as fc_info:
+                            doc_btn.click()
+                        file_chooser = fc_info.value
+                        file_chooser.set_files(str(pdf_path))
+                        attached = True
+
+            if not attached:
+                raise WhatsAppWebError("Could not locate Document file input in WhatsApp Web.")
         except Exception as exc:
             raise WhatsAppWebError(f"Could not attach receipt PDF: {exc}") from exc
 
@@ -346,7 +382,7 @@ def _attach_pdf(page, pdf_path: Path) -> None:
         page.wait_for_selector(_SEL_ATTACH_PREVIEW, timeout=_ATTACH_READY_MS)
         LOGGER.debug("Attachment preview visible.")
     except Exception:
-        LOGGER.warning("Attachment preview loading slowly — please verify before pressing Send.")
+        LOGGER.debug("Attachment preview loading slowly — please verify before pressing Send.")
 
     try:
         page.bring_to_front()

@@ -310,14 +310,12 @@ def _open_whatsapp_receipt_manual(digits: str, caption: str, pdf_path: str, pare
         from whatsapp_web import send_receipt
         send_receipt(digits, pdf_path, caption)
     except Exception as exc:
+        # Silently ignore errors from user closing the browser — that's normal workflow
+        err = str(exc).lower()
+        if "closed" in err or "target page" in err or "browser" in err:
+            return
         messagebox.showerror("WhatsApp Web Error", str(exc), parent=_valid_parent(parent_window))
         return
-    messagebox.showinfo(
-        "WhatsApp Receipt Ready",
-        "The customer chat has opened in WhatsApp Web with the PDF receipt attached!\n\n"
-        "Please review the message and press Send.",
-        parent=_valid_parent(parent_window),
-    )
 
 
 def _open_whatsapp_text_manual(digits: str, message: str, parent_window=None):
@@ -327,11 +325,9 @@ def _open_whatsapp_text_manual(digits: str, message: str, parent_window=None):
         from whatsapp_web import prepare_message
         prepare_message(digits, message)
     except Exception as exc:
+        # Silently ignore errors from user closing the browser — that's normal workflow
+        err = str(exc).lower()
+        if "closed" in err or "target page" in err or "browser" in err:
+            return
         messagebox.showerror("WhatsApp Web Error", str(exc), parent=_valid_parent(parent_window))
         return
-    messagebox.showinfo(
-        "WhatsApp Notification Ready",
-        "The customer chat has opened in WhatsApp Web with the notification message pre-filled.\n\n"
-        "Please review the message and press Send.",
-        parent=_valid_parent(parent_window),
-    )

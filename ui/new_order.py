@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 
-PAYMENT_METHODS = ["Cash", "GPay"]
+PAYMENT_METHODS = ["Cash", "GPay", "Unpaid"]
 
 from ui.theme   import COLORS, FONTS
 from ui.widgets import make_btn, make_entry, ScrollableFrame

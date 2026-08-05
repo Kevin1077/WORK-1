@@ -8,7 +8,7 @@ from datetime import datetime
 
 from ui.theme   import COLORS, FONTS, STATUS_LIST
 
-PAYMENT_METHODS = ["Cash", "GPay"]
+PAYMENT_METHODS = ["Cash", "GPay", "Unpaid"]
 from ui.widgets import make_btn, make_entry, ScrollableFrame
 
 try:
@@ -228,11 +228,19 @@ class EditOrderPopup(tk.Toplevel):
                      fg=COLORS["text_dim"], font=FONTS["small_bold"]).pack(side="left", padx=(0, 8))
 
         ilbl("Order Date")
-        self._order_date_lbl = tk.Label(
-            info_row, bg=COLORS["card_bg"], fg=COLORS["text"],
-            font=FONTS["default"]
-        )
-        self._order_date_lbl.pack(side="left", padx=(0, 20))
+        if HAS_CAL:
+            self._order_date = DateEntry(
+                info_row, width=14, date_pattern="dd-mm-yyyy",
+                background=COLORS["accent"], foreground=COLORS["card_bg"],
+                headersbackground=COLORS["sidebar_bg"] if "sidebar_bg" in COLORS else COLORS["card_bg"],
+                headersforeground=COLORS["accent"],
+                selectbackground=COLORS["accent"],
+                selectforeground=COLORS["card_bg"],
+                font=FONTS["default"],
+            )
+        else:
+            self._order_date = make_entry(info_row, width=14)
+        self._order_date.pack(side="left", padx=(0, 20), ipady=4)
 
         ilbl("Status")
         self._status_var = tk.StringVar()
@@ -306,10 +314,16 @@ class EditOrderPopup(tk.Toplevel):
 
         # Dates
         od = o.get("order_date", "")
-        self._order_date_str = od  # keep for saving
-        self._order_date_lbl.config(
-            text=_to_display(od) if od else "—"
-        )
+        if HAS_CAL:
+            try:
+                from datetime import datetime as _dt
+                d = _dt.strptime(od, "%Y-%m-%d")
+                self._order_date.set_date(d)
+            except Exception:
+                pass
+        else:
+            self._order_date.delete(0, "end")
+            self._order_date.insert(0, _to_display(od) if od else "")
 
         # Items
         for item in o.get("items", []):
@@ -359,8 +373,11 @@ class EditOrderPopup(tk.Toplevel):
                 )
                 return
 
-        # Dates — keep the original order date unchanged
-        order_date    = self._order_date_str or datetime.now().strftime("%Y-%m-%d")
+        # Dates — now editable
+        if HAS_CAL:
+            order_date = self._order_date.get_date().strftime("%Y-%m-%d")
+        else:
+            order_date = _parse_date(self._order_date.get())
         delivery_date = ""
 
         # Update customer
