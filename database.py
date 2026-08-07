@@ -50,7 +50,16 @@ def init_db():
             subtotal       REAL NOT NULL,
             item_number    INTEGER NOT NULL DEFAULT 0,
             item_notes     TEXT DEFAULT '',
+            item_returned  INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS order_item_units (
+            unit_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id     INTEGER NOT NULL,
+            unit_number INTEGER NOT NULL DEFAULT 1,
+            returned    INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (item_id) REFERENCES order_items(item_id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS price_list (
@@ -64,6 +73,19 @@ def init_db():
     _migrate_add_column(c, "orders", "status_changed_at", "TEXT DEFAULT ''")
     _migrate_add_column(c, "order_items", "item_number", "INTEGER NOT NULL DEFAULT 0")
     _migrate_add_column(c, "order_items", "item_notes", "TEXT DEFAULT ''")
+    _migrate_add_column(c, "order_items", "item_returned", "INTEGER NOT NULL DEFAULT 0")
+    # Ensure order_item_units table exists (for databases predating this feature)
+    c.executescript("""
+        CREATE TABLE IF NOT EXISTS order_item_units (
+            unit_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id     INTEGER NOT NULL,
+            unit_number INTEGER NOT NULL DEFAULT 1,
+            returned    INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (item_id) REFERENCES order_items(item_id) ON DELETE CASCADE
+        );
+    """)
+    # Backfill units for existing items that have none yet
+    _backfill_item_units(conn)
 
     defaults = [
         ("Shirt", 20.0), ("Pants", 30.0), ("Saree", 80.0),
@@ -82,6 +104,23 @@ def _migrate_add_column(cursor, table, column, col_def):
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
     except sqlite3.OperationalError:
         pass  # column already exists
+
+
+def _backfill_item_units(conn):
+    """For any order_items that have no units yet, create one unit per quantity."""
+    rows = conn.execute(
+        "SELECT oi.item_id, oi.quantity, oi.item_returned FROM order_items oi "
+        "WHERE NOT EXISTS (SELECT 1 FROM order_item_units u WHERE u.item_id=oi.item_id)"
+    ).fetchall()
+    for row in rows:
+        old_ret = row["item_returned"]
+        # First unit: if whole item was marked returned, all units returned; else none
+        for unit_num in range(1, row["quantity"] + 1):
+            conn.execute(
+                "INSERT INTO order_item_units (item_id, unit_number, returned) VALUES (?, ?, ?)",
+                (row["item_id"], unit_num, old_ret)
+            )
+    conn.commit()
 
 
 # ── Customers ─────────────────────────────────────────────────────────────────
@@ -167,11 +206,17 @@ def create_order(customer_id, order_date, delivery_date, items, notes="", paymen
         )
         oid = cur.lastrowid
         for idx, it in enumerate(items, start=1):
-            conn.execute(
+            item_cur = conn.execute(
                 "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number, item_notes) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (oid, it["cloth_type"], it["quantity"], it["price_per_unit"], it["subtotal"], idx, it.get("item_notes", ""))
             )
+            item_id = item_cur.lastrowid
+            for unit_num in range(1, it["quantity"] + 1):
+                conn.execute(
+                    "INSERT INTO order_item_units (item_id, unit_number, returned) VALUES (?, ?, 0)",
+                    (item_id, unit_num)
+                )
     return oid
 
 
@@ -179,6 +224,19 @@ def update_order(order_id, customer_id, order_date, delivery_date, items, notes,
     total = sum(i["subtotal"] for i in items)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as conn:
+        # Preserve per-unit returned states keyed by (item_number, unit_number)
+        existing_items = conn.execute(
+            "SELECT item_id, item_number FROM order_items WHERE order_id=?", (order_id,)
+        ).fetchall()
+        unit_returned_map = {}  # (item_number, unit_number) -> returned
+        for ei in existing_items:
+            units = conn.execute(
+                "SELECT unit_number, returned FROM order_item_units WHERE item_id=?",
+                (ei["item_id"],)
+            ).fetchall()
+            for u in units:
+                unit_returned_map[(ei["item_number"], u["unit_number"])] = u["returned"]
+
         conn.execute(
             "UPDATE orders SET customer_id=?, order_date=?, delivery_date=?, "
             "total_amount=?, notes=?, status=?, payment_method=?, "
@@ -189,11 +247,50 @@ def update_order(order_id, customer_id, order_date, delivery_date, items, notes,
         )
         conn.execute("DELETE FROM order_items WHERE order_id=?", (order_id,))
         for idx, it in enumerate(items, start=1):
-            conn.execute(
-                "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number, item_notes) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            item_cur = conn.execute(
+                "INSERT INTO order_items (order_id, cloth_type, quantity, price_per_unit, subtotal, item_number, item_notes, item_returned) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
                 (order_id, it["cloth_type"], it["quantity"], it["price_per_unit"], it["subtotal"], idx, it.get("item_notes", ""))
             )
+            new_item_id = item_cur.lastrowid
+            for unit_num in range(1, it["quantity"] + 1):
+                prev_ret = unit_returned_map.get((idx, unit_num), 0)
+                conn.execute(
+                    "INSERT INTO order_item_units (item_id, unit_number, returned) VALUES (?, ?, ?)",
+                    (new_item_id, unit_num, prev_ret)
+                )
+
+
+def update_unit_returned(unit_id: int, returned: bool):
+    """Toggle or set the returned flag for a single unit of an order item."""
+    val = 1 if returned else 0
+    with get_connection() as conn:
+        conn.execute("UPDATE order_item_units SET returned=? WHERE unit_id=?", (val, unit_id))
+
+
+def update_item_returned(item_id: int, returned: bool):
+    """Toggle or set all unit flags for an order item (legacy/batch helper)."""
+    val = 1 if returned else 0
+    with get_connection() as conn:
+        conn.execute("UPDATE order_item_units SET returned=? WHERE item_id=?", (val, item_id))
+
+
+def are_all_items_returned(order_id: int) -> bool:
+    """Return True if all individual units in the order are marked as returned."""
+    with get_connection() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM order_item_units u "
+            "JOIN order_items oi ON u.item_id=oi.item_id "
+            "WHERE oi.order_id=?", (order_id,)
+        ).fetchone()[0]
+        if total == 0:
+            return True
+        unreturned = conn.execute(
+            "SELECT COUNT(*) FROM order_item_units u "
+            "JOIN order_items oi ON u.item_id=oi.item_id "
+            "WHERE oi.order_id=? AND u.returned=0", (order_id,)
+        ).fetchone()[0]
+        return unreturned == 0
 
 
 def delete_order(order_id: int):
@@ -211,7 +308,7 @@ def update_order_status(order_id: int, status: str):
 
 
 def get_order_full(order_id: int):
-    """Return complete order dict including customer info and items list."""
+    """Return complete order dict including customer info, items, and per-unit data."""
     with get_connection() as conn:
         row = conn.execute("""
             SELECT o.*, c.name, c.phone, c.place, c.address
@@ -222,12 +319,20 @@ def get_order_full(order_id: int):
         if not row:
             return None
         order = dict(row)
-        order["items"] = [
-            dict(r) for r in conn.execute(
-                "SELECT * FROM order_items WHERE order_id=? ORDER BY item_number, item_id",
-                (order_id,)
+        item_rows = conn.execute(
+            "SELECT * FROM order_items WHERE order_id=? ORDER BY item_number, item_id",
+            (order_id,)
+        ).fetchall()
+        items = []
+        for ir in item_rows:
+            item_dict = dict(ir)
+            units = conn.execute(
+                "SELECT unit_id, unit_number, returned FROM order_item_units WHERE item_id=? ORDER BY unit_number",
+                (ir["item_id"],)
             ).fetchall()
-        ]
+            item_dict["units"] = [dict(u) for u in units]
+            items.append(item_dict)
+        order["items"] = items
     return order
 
 
@@ -263,6 +368,24 @@ def search_orders_by_status(status: str):
             _ORDER_SELECT + " WHERE o.status=? ORDER BY o.order_id DESC",
             (status,)
         ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def search_orders_by_item_status(returned: bool):
+    """Return all orders containing at least one unit with the given returned state."""
+    val = 1 if returned else 0
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT o.order_id, o.order_date, o.delivery_date, o.total_amount,
+                   o.status, o.payment_method, o.status_changed_at,
+                   c.name, c.phone
+            FROM orders o
+            JOIN customers c ON o.customer_id = c.customer_id
+            JOIN order_items oi ON o.order_id = oi.order_id
+            JOIN order_item_units u ON oi.item_id = u.item_id
+            WHERE u.returned = ?
+            ORDER BY o.order_id DESC
+        """, (val,)).fetchall()
     return [dict(r) for r in rows]
 
 

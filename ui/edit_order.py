@@ -105,13 +105,15 @@ class _ItemRow:
             qty, price = 1, 0.0
         return {"cloth_type": cloth, "quantity": qty,
                 "price_per_unit": price, "subtotal": qty * price,
-                "item_notes": self._notes_var.get().strip()}
+                "item_notes": self._notes_var.get().strip(),
+                "item_returned": getattr(self, "_item_returned", 0)}
 
-    def set_data(self, cloth_type, quantity, price_per_unit, item_notes=""):
+    def set_data(self, cloth_type, quantity, price_per_unit, item_notes="", item_returned=0):
         self._cloth_var.set(cloth_type)
         self._qty_var.set(str(quantity))
         self._price_var.set(f"{price_per_unit:.2f}")
         self._notes_var.set(item_notes)
+        self._item_returned = item_returned
         self.calculate()
 
     def is_valid(self) -> bool:
@@ -328,7 +330,7 @@ class EditOrderPopup(tk.Toplevel):
         # Items
         for item in o.get("items", []):
             row = self._add_item_row()
-            row.set_data(item["cloth_type"], item["quantity"], item["price_per_unit"], item.get("item_notes", ""))
+            row.set_data(item["cloth_type"], item["quantity"], item["price_per_unit"], item.get("item_notes", ""), item.get("item_returned", 0))
 
     # ── Item helpers ──────────────────────────────────────────────────────────
 

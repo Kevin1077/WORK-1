@@ -185,6 +185,16 @@ class AllOrdersFrame(tk.Frame):
         oid = self._get_selected_id()
         if not oid:
             return
+        
+        if status == "Ready":
+            if not db.are_all_items_returned(oid):
+                messagebox.showwarning(
+                    "Items Pending Wash",
+                    "Cannot change status to 'Ready'!\n\nSome clothes in this order are still in washing facilities.",
+                    parent=self
+                )
+                return
+
         order = db.get_order_full(oid)
         became_ready = order and order.get("status") != "Ready" and status == "Ready"
         db.update_order_status(oid, status)

@@ -137,3 +137,107 @@ def open_date_report(rows: list, from_date: str, to_date: str):
     """Generate and open the report PDF with the default viewer."""
     path = generate_date_report(rows, from_date, to_date)
     os.startfile(path)
+
+
+def generate_search_report(rows: list, query_desc: str, mode: str, output_path: str = None) -> str:
+    """
+    Generate and open a search-results PDF.
+    For item_status mode, rows have: order_id, order_date, name, phone, status, cloth_type, unit_number
+    For other modes, rows have the standard order dict keys.
+    """
+    if output_path is None:
+        tmp = tempfile.gettempdir()
+        safe = "".join(c if c.isalnum() or c in "._- " else "_" for c in query_desc)[:40]
+        output_path = os.path.join(tmp, f"victory_search_{safe}.pdf")
+
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=landscape(A4),
+        rightMargin=15 * mm, leftMargin=15 * mm,
+        topMargin=15 * mm, bottomMargin=15 * mm,
+    )
+
+    title_style = ParagraphStyle(
+        "title", fontSize=16, fontName="Helvetica-Bold",
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=4
+    )
+    subtitle_style = ParagraphStyle(
+        "subtitle", fontSize=10, fontName="Helvetica",
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
+    )
+
+    story = []
+    story.append(Paragraph("Victory Laundry — Search Results", title_style))
+    now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+    story.append(Paragraph(f"Search: {query_desc}    |    Generated: {now}", subtitle_style))
+    story.append(Spacer(1, 4 * mm))
+
+    if mode == "item_status":
+        header = ["S.No", "Order #", "Date", "Customer", "Item / Cloth Type", "Unit #"]
+        col_w = [13*mm, 20*mm, 26*mm, 85*mm, 95*mm, 22*mm]
+        table_data = [header]
+        for i, row in enumerate(rows, start=1):
+            od = row.get("order_date", "")
+            try:
+                od = datetime.strptime(od, "%Y-%m-%d").strftime("%d-%m-%Y")
+            except Exception:
+                pass
+            table_data.append([
+                str(i),
+                f"#{row.get('order_id', '')}",
+                od,
+                row.get("name", ""),
+                row.get("cloth_type", ""),
+                f"Unit #{row.get('unit_number', '')}",
+            ])
+        table_data.append(["", "", "", "", f"Total: {len(rows)}", ""])
+    else:
+        header = ["S.No", "Order #", "Date", "Customer", "Phone", "Total (₹)", "Status", "Payment"]
+        col_w = [13*mm, 20*mm, 26*mm, 55*mm, 36*mm, 30*mm, 28*mm, 28*mm]
+        table_data = [header]
+        for i, row in enumerate(rows, start=1):
+            od = row.get("order_date", "")
+            try:
+                od = datetime.strptime(od, "%Y-%m-%d").strftime("%d-%m-%Y")
+            except Exception:
+                pass
+            table_data.append([
+                str(i),
+                f"#{row.get('order_id', '')}",
+                od,
+                row.get("name", ""),
+                row.get("phone", ""),
+                f"\u20b9{row.get('total_amount', 0):.2f}",
+                row.get("status", ""),
+                row.get("payment_method", "") or "\u2014",
+            ])
+        total_revenue = sum(r.get("total_amount", 0) for r in rows)
+        table_data.append(["", "", "", "", f"Total Orders: {len(rows)}", f"\u20b9{total_revenue:,.2f}", "", ""])
+
+    tbl = Table(table_data, colWidths=col_w, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.black),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, 0), 9),
+        ("FONTSIZE",   (0, 1), (-1, -2), 8.5),
+        ("FONTNAME",   (0, 1), (-1, -2), "Helvetica"),
+        ("TEXTCOLOR",  (0, 1), (-1, -2), colors.black),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f0f0f0")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.black),
+        ("TEXTCOLOR",  (0, -1), (-1, -1), colors.white),
+        ("FONTNAME",   (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, -1), (-1, -1), 9),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (1, 0), (1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(tbl)
+    doc.build(story)
+    os.startfile(output_path)
+    return output_path

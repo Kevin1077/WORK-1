@@ -151,7 +151,7 @@ class OrderDetailsPopup(tk.Toplevel):
         # Header row
         hdr_row = tk.Frame(tbl_frame, bg=COLORS["table_header"])
         hdr_row.pack(fill="x")
-        for text, w in [("S.No", 50), ("Cloth Type", 150), ("Qty", 50), ("Price/Unit (₹)", 110), ("Subtotal (₹)", 110), ("Remarks", 120)]:
+        for text, w in [("S.No", 40), ("Cloth Type", 130), ("Qty", 40), ("Price/Unit (₹)", 100), ("Subtotal (₹)", 100), ("Remarks", 110), ("Return Status (per unit)", 200)]:
             tk.Label(hdr_row, text=text, bg=COLORS["table_header"],
                      fg=COLORS["accent"], font=FONTS["small_bold"],
                      width=w // 10, anchor="w", padx=8, pady=6).pack(side="left")
@@ -163,17 +163,49 @@ class OrderDetailsPopup(tk.Toplevel):
             row_f.pack(fill="x")
             item_num = item.get("item_number", i)
             vals = [
-                (str(item_num),                     50),
-                (item["cloth_type"],                150),
-                (str(item["quantity"]),              50),
-                (f"₹{item['price_per_unit']:.2f}",  110),
-                (f"₹{item['subtotal']:.2f}",         110),
-                (item.get("item_notes", "") or "—", 120),
+                (str(item_num),                     40),
+                (item["cloth_type"],                130),
+                (str(item["quantity"]),              40),
+                (f"₹{item['price_per_unit']:.2f}",  100),
+                (f"₹{item['subtotal']:.2f}",         100),
+                (item.get("item_notes", "") or "—", 110),
             ]
             for val, w in vals:
                 tk.Label(row_f, text=val, bg=row_bg,
                          fg=COLORS["text"], font=FONTS["default"],
                          width=w // 10, anchor="w", padx=8, pady=8).pack(side="left")
+
+            # Per-unit checkboxes in a horizontal strip inside last column space
+            units = item.get("units", [])
+            chk_frame = tk.Frame(row_f, bg=row_bg)
+            chk_frame.pack(side="left", padx=6, pady=4)
+
+            def _make_unit_toggle(uid, v, item_id):
+                def _cmd():
+                    db.update_unit_returned(uid, v.get())
+                    # Also update the legacy item_returned flag based on all units
+                    order = db.get_order_full(item_id)  # item_id is a proxy; we don't need full order
+                return _cmd
+
+            for unit in units:
+                uid = unit["unit_id"]
+                u_num = unit["unit_number"]
+                chk_var = tk.BooleanVar(value=bool(unit.get("returned", 0)))
+
+                def _make_cmd(uid_, v_):
+                    def _cmd():
+                        db.update_unit_returned(uid_, v_.get())
+                    return _cmd
+
+                tk.Checkbutton(
+                    chk_frame,
+                    text=f"#{u_num}",
+                    variable=chk_var,
+                    command=_make_cmd(uid, chk_var),
+                    bg=row_bg, fg=COLORS["text"], selectcolor=COLORS["input_bg"],
+                    activebackground=row_bg, activeforeground=COLORS["text"],
+                    font=FONTS["small"], cursor="hand2"
+                ).pack(side="left", padx=(0, 6))
 
         # Total row
         total_row = tk.Frame(tbl_frame, bg=COLORS["accent"])
@@ -201,6 +233,15 @@ class OrderDetailsPopup(tk.Toplevel):
 
     def _save_status(self):
         new_status = self._status_var.get()
+        if new_status == "Ready":
+            if not db.are_all_items_returned(self.order_id):
+                messagebox.showwarning(
+                    "Items Pending Wash",
+                    "Cannot change status to 'Ready'!\n\nSome clothes in this order are still in washing facilities. Please check all item checkboxes once every item is returned.",
+                    parent=self
+                )
+                return
+
         became_ready = self._order.get("status") != "Ready" and new_status == "Ready"
         db.update_order_status(self.order_id, new_status)
         if self.refresh_cb:

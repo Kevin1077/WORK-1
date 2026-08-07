@@ -1,0 +1,4 @@
+Order 23: Jacket x3
+Units: [(64, 1, 0), (65, 2, 0), (66, 3, 0)]
+After marking unit1+unit2 returned — are_all_items_returned: False
+After marking unit3 returned — are_all_items_returned: True
