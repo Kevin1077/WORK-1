@@ -38,7 +38,7 @@ class AppWindow:
         style = ttk.Style()
         style.theme_use("clam")
 
-        # Treeview
+        # Treeview — dark rows, white text, orange selection
         style.configure("Treeview",
             background=COLORS["table_row"],
             foreground=COLORS["text"],
@@ -49,7 +49,7 @@ class AppWindow:
         )
         style.configure("Treeview.Heading",
             background=COLORS["table_header"],
-            foreground=COLORS["accent"],
+            foreground=COLORS["text"],
             font=FONTS["bold"],
             relief="flat",
             borderwidth=0,
@@ -59,23 +59,23 @@ class AppWindow:
             foreground=[("selected", COLORS["table_sel_fg"])],
         )
         style.map("Treeview.Heading",
-            background=[("active", COLORS["sidebar_active"])],
+            background=[("active", COLORS["card_bg"])],
         )
 
-        # Scrollbar
+        # Scrollbar — dark themed
         style.configure("Vertical.TScrollbar",
-            background=COLORS["border"],
+            background=COLORS["border2"],
             troughcolor=COLORS["card_bg"],
             arrowcolor=COLORS["text_dim"],
             borderwidth=0,
         )
         style.configure("Horizontal.TScrollbar",
-            background=COLORS["border"],
+            background=COLORS["border2"],
             troughcolor=COLORS["card_bg"],
             borderwidth=0,
         )
 
-        # Combobox
+        # Combobox — dark themed
         style.configure("TCombobox",
             fieldbackground=COLORS["input_bg"],
             background=COLORS["input_bg"],
@@ -90,7 +90,7 @@ class AppWindow:
             foreground=[("readonly", COLORS["text"])],
         )
 
-        # Notebook (not used but good to have)
+        # Notebook
         style.configure("TNotebook", background=COLORS["bg"])
         style.configure("TNotebook.Tab",
             background=COLORS["card_bg"],
@@ -101,20 +101,20 @@ class AppWindow:
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_layout(self):
-        # Thin black accent line at top
-        top_bar = tk.Frame(self.root, bg="#080707", height=3)
+        # Orange accent bar at very top
+        top_bar = tk.Frame(self.root, bg=COLORS["accent"], height=3)
         top_bar.pack(side="top", fill="x")
 
         main = tk.Frame(self.root, bg=COLORS["bg"])
         main.pack(fill="both", expand=True)
 
-        # Sidebar
+        # Sidebar (pitch black / very dark grey)
         self.sidebar = tk.Frame(main, bg=COLORS["sidebar_bg"], width=220)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
-        # Thin separator line between sidebar and content
-        tk.Frame(main, bg="#BBBBBB", width=1).pack(side="left", fill="y")
+        # 1px very dark separator between sidebar and content
+        tk.Frame(main, bg=COLORS["border"], width=1).pack(side="left", fill="y")
 
         # Content area
         self.content = tk.Frame(main, bg=COLORS["bg"])
@@ -130,9 +130,9 @@ class AppWindow:
         tk.Label(logo_frame, text="✦", bg=COLORS["sidebar_bg"],
                  fg=COLORS["accent"], font=("Segoe UI", 26, "bold")).pack()
         tk.Label(logo_frame, text=SHOP_NAME.upper(), bg=COLORS["sidebar_bg"],
-                 fg=COLORS["accent"], font=("Segoe UI", 11, "bold")).pack()
+                 fg=COLORS["text"], font=("Segoe UI", 11, "bold")).pack()
         tk.Label(logo_frame, text="Management System", bg=COLORS["sidebar_bg"],
-                 fg=COLORS["text_muted"], font=FONTS["small"]).pack()
+                 fg=COLORS["text_dim"], font=FONTS["small"]).pack()
 
         # Separator
         tk.Frame(sb, bg=COLORS["border"], height=1).pack(fill="x", padx=16, pady=(0, 10))
@@ -163,9 +163,11 @@ class AppWindow:
         self._tick()
 
     def _make_nav_btn(self, key, icon, label):
+        # Outer padding frame (always sidebar_bg; active highlight is on inner)
         outer = tk.Frame(self.sidebar, bg=COLORS["sidebar_bg"], cursor="hand2")
         outer.pack(fill="x", padx=8, pady=2)
 
+        # Inner pill — gets orange bg + border-radius effect when active
         inner = tk.Frame(outer, bg=COLORS["sidebar_bg"], padx=12, pady=10)
         inner.pack(fill="x")
 
@@ -184,12 +186,13 @@ class AppWindow:
 
         def on_enter(e, k=key):
             if self._current != k:
-                for w in all_w:
-                    w.config(bg=COLORS["sidebar_active"])
+                hover_bg = "#2C2C2E"
+                for w in [inner, icon_lbl, text_lbl]:
+                    w.config(bg=hover_bg)
 
         def on_leave(e, k=key):
             if self._current != k:
-                for w in all_w:
+                for w in [inner, icon_lbl, text_lbl]:
                     w.config(bg=COLORS["sidebar_bg"])
 
         for w in all_w:
@@ -203,17 +206,21 @@ class AppWindow:
     def _activate_nav(self, key):
         for k, widgets in self._nav_btns.items():
             if k == key:
-                bg = COLORS["sidebar_active"]
-                fg_icon = COLORS["accent"]
-                fg_text = COLORS["text"]
+                # Active: vibrant orange pill with white text
+                inner_bg   = COLORS["sidebar_active"]   # #FF9500
+                icon_fg    = COLORS["text"]              # #FFFFFF
+                text_fg    = COLORS["text"]              # #FFFFFF
+                outer_bg   = COLORS["sidebar_bg"]
             else:
-                bg = COLORS["sidebar_bg"]
-                fg_icon = COLORS["text_dim"]
-                fg_text = COLORS["text_dim"]
-            for w in widgets.values():
-                w.config(bg=bg)
-            widgets["icon"].config(fg=fg_icon)
-            widgets["text"].config(fg=fg_text)
+                inner_bg   = COLORS["sidebar_bg"]
+                icon_fg    = COLORS["text_dim"]
+                text_fg    = COLORS["text_dim"]
+                outer_bg   = COLORS["sidebar_bg"]
+
+            widgets["outer"].config(bg=outer_bg)
+            widgets["inner"].config(bg=inner_bg)
+            widgets["icon"].config(bg=inner_bg, fg=icon_fg)
+            widgets["text"].config(bg=inner_bg, fg=text_fg)
 
     def _tick(self):
         self._clock.config(
@@ -252,3 +259,4 @@ class AppWindow:
         frame = self.frames[name]
         if hasattr(frame, "refresh"):
             frame.refresh()
+

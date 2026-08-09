@@ -75,7 +75,7 @@ class AllOrdersFrame(tk.Frame):
         self._ctx_menu.add_command(label="✏️  Edit Order",  command=self._edit_selected)
         self._ctx_menu.add_separator()
         self._ctx_menu.add_command(label="🖨️  Print Receipt", command=self._print_selected)
-        self._ctx_menu.add_command(label="📲  WhatsApp Receipt (PDF)", command=self._whatsapp_selected)
+        self._ctx_menu.add_command(label="📲  WhatsApp Receipt (PNG)", command=self._whatsapp_selected)
         self._ctx_menu.add_command(label="🏷️  Print Dispatch Slip", command=self._print_dispatch_selected)
         self._ctx_menu.add_separator()
         self._ctx_menu.add_command(label="✅ Mark as Ready",     command=lambda: self._quick_status("Ready"))

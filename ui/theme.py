@@ -1,63 +1,69 @@
 """
 ui/theme.py — Color palette, fonts, and style constants for Victory Laundry
+iOS Calculator-inspired dark theme.
 """
 
 COLORS = {
-    # Backgrounds
-    "bg":              "#FAF9F6",
-    "sidebar_bg":      "#F0EFE9",
-    "sidebar_active":  "#D9D8D2",
-    "card_bg":         "#ECEAE4",
-    "card_bg2":        "#E8E7E1",
+    # ── Backgrounds ──────────────────────────────────────────────────────────
+    "bg":              "#000000",   # Pitch Black — main window background
+    "sidebar_bg":      "#1C1C1E",   # Very Dark Grey — sidebar
+    "sidebar_active":  "#FF9500",   # Vibrant Orange — active nav item highlight
+    "card_bg":         "#333333",   # Dark Grey — stat cards, header bar
+    "card_bg2":        "#2C2C2E",   # Slightly lighter dark — menus/popovers
 
-    # Accent (off-white on dark, dark on light)
-    "accent":          "#080707",
-    "accent_dark":     "#1a1a1a",
-    "accent_light":    "#333333",
+    # ── Accent ───────────────────────────────────────────────────────────────
+    "accent":          "#FF9500",   # Vibrant Orange — primary accent
+    "accent_dark":     "#E08800",   # Darker orange for pressed states
+    "accent_light":    "#FFB347",   # Lighter orange tint
 
-    # Text
-    "text":            "#080707",
-    "text_dim":        "#444444",
-    "text_muted":      "#666666",
+    # ── Text ─────────────────────────────────────────────────────────────────
+    "text":            "#FFFFFF",   # Pure White — primary text
+    "text_dim":        "#A6A6A6",   # Light Grey — secondary / subtitle text
+    "text_muted":      "#636366",   # Muted grey — clock, minor labels
 
-    # Status
-    "success":         "#238636",
-    "success_fg":      "#1a7a30",
-    "danger":          "#da3633",
-    "danger_fg":       "#c0392b",
-    "warning":         "#9e6a03",
-    "warning_fg":      "#b8860b",
-    "info_fg":         "#1565c0",
+    # ── Status colours (dark-mode vivid variants) ─────────────────────────
+    "success":         "#32D74B",   # Neon Green — Ready / Delivered
+    "success_fg":      "#32D74B",
+    "danger":          "#FF453A",   # Bright Red — Cancelled / errors
+    "danger_fg":       "#FF453A",
+    "warning":         "#FFD60A",   # Bright Yellow — In Progress
+    "warning_fg":      "#FFD60A",
+    "info_fg":         "#0A84FF",   # Bright Blue — Received
 
-    # Borders & inputs
-    "border":          "#CCCCCC",
-    "border2":         "#BBBBBB",
-    "input_bg":        "#FFFFFF",
-    "input_fg":        "#080707",
+    # ── Borders & inputs ─────────────────────────────────────────────────────
+    "border":          "#1C1C1E",   # Very Dark Grey — dividers
+    "border2":         "#3A3A3C",   # Slightly lighter — input outlines
+    "input_bg":        "#2C2C2E",   # Dark input background
+    "input_fg":        "#FFFFFF",   # White input text
 
-    # Table / Treeview
-    "table_header":    "#F0EFE9",
-    "table_row":       "#FAF9F6",
-    "table_alt":       "#F5F4F0",
-    "table_sel_bg":    "#080707",
-    "table_sel_fg":    "#FAF9F6",
+    # ── Table / Treeview ─────────────────────────────────────────────────────
+    "table_header":    "#333333",   # Dark Grey header row
+    "table_row":       "#000000",   # Pitch Black rows
+    "table_alt":       "#0A0A0A",   # Almost-black alternating rows
+    "table_sel_bg":    "#FF9500",   # Orange selected row
+    "table_sel_fg":    "#FFFFFF",   # White text on selected row
 
-    # Buttons
-    "btn_primary":     "#FAF9F6",
-    "btn_primary_fg":  "#080707",
-    "btn_primary_border": "#080707",
-    "btn_success":     "#FAF9F6",
-    "btn_success_fg":  "#1a7a30",
-    "btn_success_border": "#1a7a30",
-    "btn_danger":      "#FAF9F6",
-    "btn_danger_fg":   "#c0392b",
-    "btn_danger_border": "#c0392b",
-    "btn_neutral":     "#FAF9F6",
-    "btn_neutral_fg":  "#080707",
-    "btn_neutral_border": "#080707",
-    "btn_edit":        "#FAF9F6",
-    "btn_edit_fg":     "#1565c0",
-    "btn_edit_border": "#1565c0",
+    # ── Buttons ──────────────────────────────────────────────────────────────
+    # Primary → Orange bg, white text (New Order)
+    "btn_primary":        "#FF9500",
+    "btn_primary_fg":     "#FFFFFF",
+    "btn_primary_border": "#FF9500",
+    # Success → dark card bg, neon-green text
+    "btn_success":        "#333333",
+    "btn_success_fg":     "#32D74B",
+    "btn_success_border": "#32D74B",
+    # Danger → dark card bg, bright-red text
+    "btn_danger":         "#333333",
+    "btn_danger_fg":      "#FF453A",
+    "btn_danger_border":  "#FF453A",
+    # Neutral → dark card bg, white text (Search, Date Records, Refresh)
+    "btn_neutral":        "#333333",
+    "btn_neutral_fg":     "#FFFFFF",
+    "btn_neutral_border": "#3A3A3C",
+    # Edit → dark card bg, bright-blue text
+    "btn_edit":           "#333333",
+    "btn_edit_fg":        "#0A84FF",
+    "btn_edit_border":    "#0A84FF",
 }
 
 FONTS = {
@@ -75,11 +81,11 @@ FONTS = {
 }
 
 STATUS_COLORS = {
-    "Received":    "#1565c0",
-    "In Progress": "#b8860b",
-    "Ready":       "#1a7a30",
-    "Delivered":   "#666666",
-    "Cancelled":   "#c0392b",
+    "Received":    "#0A84FF",   # Bright Blue
+    "In Progress": "#FFD60A",   # Bright Yellow
+    "Ready":       "#32D74B",   # Neon Green
+    "Delivered":   "#32D74B",   # Neon Green (same as Ready)
+    "Cancelled":   "#FF453A",   # Bright Red
 }
 
 STATUS_LIST = ["Received", "In Progress", "Ready", "Delivered", "Cancelled"]
@@ -87,3 +93,4 @@ STATUS_LIST = ["Received", "In Progress", "Ready", "Delivered", "Cancelled"]
 SHOP_NAME = "Victory Laundry"
 SHOP_TAGLINE = "Professional Laundry Services"
 SHOP_PHONE = ""   # fill in shop contact if needed
+

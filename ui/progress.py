@@ -74,7 +74,7 @@ class ProgressFrame(tk.Frame):
 
     def _set_period(self, period: str):
         self._current_period = period
-        # Highlight active button
+        # Highlight active button — orange bg, white text
         btn_map = {
             "day": self._btn_day,
             "week": self._btn_week,
@@ -83,7 +83,7 @@ class ProgressFrame(tk.Frame):
         }
         for p, b in btn_map.items():
             if p == period:
-                b.config(bg=COLORS["accent"], fg=COLORS["bg"])
+                b.config(bg=COLORS["accent"], fg="#FFFFFF")
             else:
                 b.config(bg=COLORS["btn_neutral"], fg=COLORS["btn_neutral_fg"])
         self.refresh()
@@ -123,39 +123,91 @@ class ProgressFrame(tk.Frame):
             lbl.pack(expand=True)
             return
 
-        periods = [d["period"] for d in data]
-        revenues = [d["revenue"] for d in data]
-        counts = [d["order_count"] for d in data]
+        periods  = [d["period"]      for d in data]
+        revenues = [d["revenue"]     for d in data]
+        counts   = [d["order_count"] for d in data]
 
-        fig = Figure(figsize=(10, 5), dpi=100, facecolor=COLORS["card_bg"])
+        # ── Design constants ────────────────────────────────────────────────
+        CHART_BG    = "#1E1E1E"   # Dark grey chart + axes background
+        ORANGE      = "#FF9500"   # Vibrant orange — line, bars, markers edge
+        LABEL_COLOR = "#E0E0E0"   # Light grey — all text labels
+        GRID_COLOR  = "#444444"   # Faint dark grey gridlines
+        SPINE_COLOR = "#3A3A3C"   # Very dark — axis spines
 
-        # Subplot 1: Revenue (Line Chart)
+        fig = Figure(figsize=(10, 5), dpi=100, facecolor=COLORS["bg"])
+        fig.subplots_adjust(hspace=0.45)
+
+        # ── Subplot 1: Revenue Trend (Line Chart) ────────────────────────────
         ax1 = fig.add_subplot(211)
-        ax1.set_facecolor(COLORS["card_bg"])
-        ax1.plot(periods, revenues, marker="o", color="#080707", linewidth=2, label="Revenue (₹)")
-        ax1.set_title(f"Revenue Trend ({title_suffix})", fontsize=11, fontweight="bold", color="#080707")
-        ax1.set_ylabel("Revenue (₹)", fontsize=9, color="#080707")
-        ax1.grid(True, linestyle="--", alpha=0.5)
-        ax1.tick_params(colors="#080707", labelsize=8)
+        ax1.set_facecolor(CHART_BG)
+
+        ax1.plot(
+            periods, revenues,
+            color=ORANGE,
+            linewidth=2.5,
+            label="Revenue (₹)",
+            marker="o",
+            markersize=7,
+            markerfacecolor="#FFFFFF",   # Solid white fill
+            markeredgecolor=ORANGE,      # Orange border
+            markeredgewidth=2.5,
+        )
+
+        ax1.set_title(
+            f"Revenue Trend ({title_suffix})",
+            fontsize=11, fontweight="bold", color=LABEL_COLOR, pad=8
+        )
+        ax1.set_ylabel("Revenue (₹)", fontsize=9, color=LABEL_COLOR)
+        ax1.tick_params(colors=LABEL_COLOR, labelsize=8, which="both")
+        ax1.xaxis.label.set_color(LABEL_COLOR)
+
+        # Subtle dashed gridlines
+        ax1.grid(True, linestyle="--", linewidth=0.6, color=GRID_COLOR, alpha=0.8)
+        ax1.set_axisbelow(True)
+
+        # Style axis spines
+        for spine in ax1.spines.values():
+            spine.set_edgecolor(SPINE_COLOR)
+
+        # Reduce x-tick density if many points
         if len(periods) > 10:
             ax1.set_xticks(range(0, len(periods), max(1, len(periods) // 10)))
-        fig.tight_layout()
 
-        # Subplot 2: Order Count (Bar Chart)
+        # ── Subplot 2: Number of Orders (Bar Chart) ──────────────────────────
         ax2 = fig.add_subplot(212)
-        ax2.set_facecolor(COLORS["card_bg"])
-        bars = ax2.bar(periods, counts, color="#444444", width=0.5, label="Orders Count")
-        ax2.set_title(f"Number of Orders ({title_suffix})", fontsize=11, fontweight="bold", color="#080707")
-        ax2.set_xlabel("Time Period", fontsize=9, color="#080707")
-        ax2.set_ylabel("Orders Count", fontsize=9, color="#080707")
-        ax2.grid(True, linestyle="--", alpha=0.5)
-        ax2.tick_params(colors="#080707", labelsize=8)
+        ax2.set_facecolor(CHART_BG)
+
+        ax2.bar(
+            periods, counts,
+            color=ORANGE,
+            width=0.5,
+            edgecolor=ORANGE,   # Match fill — no dark border
+            label="Orders Count",
+        )
+
+        ax2.set_title(
+            f"Number of Orders ({title_suffix})",
+            fontsize=11, fontweight="bold", color=LABEL_COLOR, pad=8
+        )
+        ax2.set_xlabel("Time Period", fontsize=9, color=LABEL_COLOR)
+        ax2.set_ylabel("Orders Count", fontsize=9, color=LABEL_COLOR)
+        ax2.tick_params(colors=LABEL_COLOR, labelsize=8, which="both")
+        ax2.xaxis.label.set_color(LABEL_COLOR)
+        ax2.yaxis.label.set_color(LABEL_COLOR)
+
+        # Subtle dashed gridlines
+        ax2.grid(True, linestyle="--", linewidth=0.6, color=GRID_COLOR, alpha=0.8)
+        ax2.set_axisbelow(True)
+
+        # Style axis spines
+        for spine in ax2.spines.values():
+            spine.set_edgecolor(SPINE_COLOR)
+
+        # Reduce x-tick density if many points
         if len(periods) > 10:
             ax2.set_xticks(range(0, len(periods), max(1, len(periods) // 10)))
 
-        fig.tight_layout()
-
-        # Embed into Tkinter canvas
+        # ── Embed into Tkinter canvas ────────────────────────────────────────
         canvas = FigureCanvasTkAgg(fig, master=self._graph_container)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)

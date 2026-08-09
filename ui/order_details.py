@@ -227,7 +227,7 @@ class OrderDetailsPopup(tk.Toplevel):
         make_btn(btn_row, "🏷️  Print Dispatch Slip", self._print_dispatch,   "neutral").pack(side="left", padx=(0, 8))
         make_btn(btn_row, "🗑️  Delete",              self._delete,           "danger").pack(side="left", padx=(0, 8))
         make_btn(btn_row, "✕  Close",                self.destroy,           "neutral").pack(side="right", padx=(8, 0))
-        make_btn(btn_row, "📲  WhatsApp Receipt (PDF)", self._whatsapp_receipt, "success").pack(side="right")
+        make_btn(btn_row, "📲  WhatsApp Receipt (PNG)", self._whatsapp_receipt, "success").pack(side="right")
 
     # ── Button handlers ────────────────────────────────────────────────────────
 

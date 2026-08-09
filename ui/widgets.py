@@ -41,9 +41,12 @@ def make_btn(parent, text, command, style="primary", width=None, **kw):
     if width:
         btn.config(width=width)
 
-    # Pop effect: invert on hover
+    # Hover: for orange buttons, darken; for dark-card buttons, lighten slightly
     def _enter(e):
-        btn.config(bg=border, fg=bg)
+        if bg == COLORS["btn_primary"]:  # Orange bg — darken on hover
+            btn.config(bg=COLORS["accent_dark"], fg="#FFFFFF")
+        else:  # Dark card btn — show colored bg on hover
+            btn.config(bg=border, fg="#000000" if border == COLORS["btn_neutral_border"] else "#FFFFFF")
     def _leave(e):
         btn.config(bg=bg, fg=fg)
 
@@ -115,10 +118,10 @@ def section_header(parent, title, bg=None):
     bar = tk.Frame(parent, bg=bg)
     bar.pack(fill="x", pady=(0, 10))
 
-    tk.Label(bar, text=title, bg=bg, fg=COLORS["accent"],
+    tk.Label(bar, text=title, bg=bg, fg=COLORS["text"],
              font=FONTS["title"]).pack(side="left", padx=20, pady=12)
 
-    tk.Frame(bar, bg=COLORS["border"], height=2).pack(
+    tk.Frame(bar, bg=COLORS["border"], height=1).pack(
         side="bottom", fill="x", padx=20
     )
     return bar
@@ -182,8 +185,9 @@ def build_tree(parent, columns, headings, col_widths, height=15, show_scrollbar=
 
     tree = ttk.Treeview(frame, columns=columns, show="headings",
                         height=height, selectmode="browse")
-    tree.tag_configure("odd",  background=COLORS["table_row"])
-    tree.tag_configure("even", background=COLORS["table_alt"])
+    # Row alternating — pitch black / almost-black for subtle depth
+    tree.tag_configure("odd",  background=COLORS["table_row"],  foreground=COLORS["text_dim"])
+    tree.tag_configure("even", background=COLORS["table_alt"],  foreground=COLORS["text_dim"])
 
     for col, heading, width in zip(columns, headings, col_widths):
         tree.heading(col, text=heading, anchor="w")

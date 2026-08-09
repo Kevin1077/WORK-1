@@ -41,13 +41,14 @@ class DashboardFrame(tk.Frame):
         self._stats_frame.pack(fill="x", pady=(0, 20))
 
         self._stat_cards = {}
+        # Revenue card uses neon green; all others use pure white
         stat_defs = [
-            ("today_orders",    "🧺",  "Today's Orders",   COLORS["info_fg"]),
-            ("today_revenue",   "💰",  "Today's Revenue",  COLORS["success_fg"]),
-            ("pending",         "⏳",  "Pending Orders",   COLORS["warning_fg"]),
+            ("today_orders",    "🧺",  "Today's Orders",   COLORS["text"]),
+            ("today_revenue",   "💰",  "Today's Revenue",  COLORS["success"]),
+            ("pending",         "⏳",  "Pending Orders",   COLORS["warning"]),
             ("ready",           "✅",  "Ready for Pickup", COLORS["success"]),
-            ("total_customers", "👥",  "Total Customers",  COLORS["accent"]),
-            ("total_orders",    "📋",  "Total Orders",     COLORS["text_dim"]),
+            ("total_customers", "👥",  "Total Customers",  COLORS["text"]),
+            ("total_orders",    "📋",  "Total Orders",     COLORS["text"]),
         ]
         for col, (key, icon, label, color) in enumerate(stat_defs):
             card = self._make_stat_card(self._stats_frame, icon, label, "—", color)
@@ -91,17 +92,17 @@ class DashboardFrame(tk.Frame):
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<Button-3>", self._show_context_menu)
 
-        # Context menu
+        # Context menu — dark popover with orange active highlight
         self._ctx_menu = tk.Menu(self, tearoff=0,
                                   bg=COLORS["card_bg2"],
                                   fg=COLORS["text"],
-                                  activebackground=COLORS["sidebar_active"],
-                                  activeforeground=COLORS["accent"],
+                                  activebackground=COLORS["accent"],
+                                  activeforeground=COLORS["text"],
                                   font=FONTS["default"])
         self._ctx_menu.add_command(label="📄 View Details", command=self._view_selected)
         self._ctx_menu.add_command(label="✏️  Edit Order",  command=self._edit_selected)
         self._ctx_menu.add_separator()
-        self._ctx_menu.add_command(label="📲  WhatsApp Receipt (PDF)", command=self._whatsapp_selected)
+        self._ctx_menu.add_command(label="📲  WhatsApp Receipt (PNG)", command=self._whatsapp_selected)
         self._ctx_menu.add_command(label="🖨️  Print Receipt", command=self._print_selected)
         self._ctx_menu.add_command(label="🏷️  Print Dispatch Slip", command=self._print_dispatch_selected)
         self._ctx_menu.add_separator()
@@ -112,16 +113,17 @@ class DashboardFrame(tk.Frame):
             self._tree.tag_configure(f"s_{status}", foreground=color)
 
     def _make_stat_card(self, parent, icon, label, value, color):
-        card = tk.Frame(parent, bg=COLORS["card_bg"], padx=16, pady=16,
+        # Dark grey card — no shadow, highly rounded feel via padx/pady
+        card = tk.Frame(parent, bg=COLORS["card_bg"], padx=18, pady=18,
                         relief="flat", bd=0)
         card.columnconfigure(0, weight=1)
 
         tk.Label(card, text=icon, bg=COLORS["card_bg"],
-                 fg=color, font=("Segoe UI", 22)).grid(row=0, column=0, sticky="w")
+                 fg=COLORS["text_dim"], font=("Segoe UI", 20)).grid(row=0, column=0, sticky="w")
 
         val_lbl = tk.Label(card, text=value, bg=COLORS["card_bg"],
                            fg=color, font=FONTS["xxlarge"])
-        val_lbl.grid(row=1, column=0, sticky="w", pady=(4, 2))
+        val_lbl.grid(row=1, column=0, sticky="w", pady=(6, 2))
 
         tk.Label(card, text=label, bg=COLORS["card_bg"],
                  fg=COLORS["text_dim"], font=FONTS["small"]).grid(row=2, column=0, sticky="w")
