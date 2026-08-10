@@ -42,17 +42,8 @@ def _get_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageF
     return bbox[2] - bbox[0]
 
 
-def generate_receipt(order_data: dict, output_path: str = None) -> str:
-    """
-    Generate a PNG image receipt for the given order_data dict.
-    Returns the path to the generated PNG image.
-    """
-    if output_path is None:
-        tmp = tempfile.gettempdir()
-        output_path = os.path.join(
-            tmp, f"victory_receipt_order_{order_data['order_id']}.png"
-        )
-
+def _build_receipt_image(order_data: dict) -> Image.Image:
+    """Build and return a PIL Image object of the receipt (RGB mode, B&W design)."""
     # Canvas config
     img_width = 600
     margin = 35
@@ -268,7 +259,40 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
     tw = _get_text_width(draw, footer_text, font_footer)
     draw.text(((img_width - tw) // 2, y), footer_text, fill=fg_color, font=font_footer)
 
+    return img
+
+
+def generate_receipt(order_data: dict, output_path: str = None) -> str:
+    """
+    Generate a PNG image receipt for the given order_data dict.
+    Returns the path to the generated PNG image.
+    """
+    if output_path is None:
+        tmp = tempfile.gettempdir()
+        output_path = os.path.join(
+            tmp, f"victory_receipt_order_{order_data['order_id']}.png"
+        )
+
+    img = _build_receipt_image(order_data)
     img.save(output_path, "PNG")
+    return output_path
+
+
+def generate_receipt_pdf(order_data: dict, output_path: str = None) -> str:
+    """
+    Generate a PDF receipt for the given order_data dict.
+    Returns the path to the generated PDF document.
+    """
+    if output_path is None:
+        tmp = tempfile.gettempdir()
+        output_path = os.path.join(
+            tmp, f"victory_receipt_order_{order_data['order_id']}.pdf"
+        )
+
+    img = _build_receipt_image(order_data)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    img.save(output_path, "PDF", resolution=150.0)
     return output_path
 
 
@@ -276,6 +300,28 @@ def open_receipt(order_data: dict):
     """Generate and open the receipt PNG image with the default viewer."""
     path = generate_receipt(order_data)
     os.startfile(path)
+
+
+def open_receipt_pdf(order_data: dict, parent_window=None) -> str:
+    """Generate and print/open the receipt PDF document."""
+    path = generate_receipt_pdf(order_data)
+    try:
+        if hasattr(os, "startfile"):
+            try:
+                os.startfile(path, "print")
+            except Exception:
+                os.startfile(path)
+        else:
+            # Fall back for non-Windows platforms (open/preview)
+            import subprocess
+            import sys
+            if sys.platform == "darwin":
+                subprocess.run(["open", path], check=False)
+            else:
+                subprocess.run(["xdg-open", path], check=False)
+    except Exception:
+        pass
+    return path
 
 
 def normalize_whatsapp_phone(phone: object) -> str:

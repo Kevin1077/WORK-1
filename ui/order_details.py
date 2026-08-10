@@ -273,8 +273,8 @@ class OrderDetailsPopup(tk.Toplevel):
         order = db.get_order_full(self.order_id)
         if order:
             try:
-                from utils.receipt import open_receipt
-                open_receipt(order)
+                from utils.receipt import open_receipt_pdf
+                open_receipt_pdf(order, parent_window=self)
             except Exception as e:
                 messagebox.showerror("Print Error", str(e), parent=self)
 

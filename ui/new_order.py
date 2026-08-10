@@ -546,8 +546,8 @@ class NewOrderFrame(tk.Frame):
 
         def _print_rec():
             try:
-                from utils.receipt import open_receipt
-                open_receipt(order)
+                from utils.receipt import open_receipt_pdf
+                open_receipt_pdf(order, parent_window=win)
             except Exception as e:
                 messagebox.showerror("Print Error", str(e), parent=win)
 
