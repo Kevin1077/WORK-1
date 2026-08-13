@@ -3,6 +3,7 @@ database.py — SQLite data layer for Victory Laundry Management System
 """
 import sqlite3
 import os
+import re
 from datetime import datetime, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "laundry.db")
@@ -488,3 +489,113 @@ def get_yearly_stats():
             ORDER BY period
         """).fetchall()
     return [dict(r) for r in rows]
+
+
+def clean_phone(phone_str: str) -> str:
+    """Normalize phone number string for grouping."""
+    raw = str(phone_str or "").strip()
+    digits = "".join(re.findall(r"\d", raw))
+    if raw.startswith("00"):
+        digits = digits[2:]
+    if len(digits) == 10:
+        digits = "91" + digits
+    return digits if digits else raw.lower()
+
+
+def get_customer_aggregations():
+    """Aggregate customer data grouped by phone number.
+    Returns a list of customer dicts:
+      - name: most recent name used
+      - phone: phone number string
+      - normalized_phone: cleaned phone string for key matching / WhatsApp
+      - total_orders: count of orders
+      - total_spent: total revenue from customer
+      - first_visit: earliest order_date
+      - last_visit: latest order_date
+      - orders: list of order dicts sorted by order_id DESC
+    """
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT o.order_id, o.order_date, o.delivery_date, o.total_amount,
+                   o.status, o.payment_method, o.status_changed_at, o.notes,
+                   c.customer_id, c.name, c.phone, c.place, c.address
+            FROM orders o
+            JOIN customers c ON o.customer_id = c.customer_id
+            ORDER BY o.order_id DESC
+        """).fetchall()
+
+        cust_rows = conn.execute("""
+            SELECT c.customer_id, c.name, c.phone, c.place, c.address
+            FROM customers c
+            WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)
+        """).fetchall()
+
+    grouped = {}
+
+    for r in rows:
+        order = dict(r)
+        raw_phone = order.get("phone", "")
+        norm_p = clean_phone(raw_phone)
+        if norm_p not in grouped:
+            grouped[norm_p] = {
+                "name": order.get("name", "Customer"),
+                "phone": raw_phone,
+                "normalized_phone": norm_p,
+                "place": order.get("place", ""),
+                "address": order.get("address", ""),
+                "total_orders": 0,
+                "total_spent": 0.0,
+                "first_visit": order.get("order_date", ""),
+                "last_visit": order.get("order_date", ""),
+                "orders": []
+            }
+        cust = grouped[norm_p]
+        cust["total_orders"] += 1
+        cust["total_spent"] += float(order.get("total_amount", 0.0))
+        cust["orders"].append(order)
+
+        o_date = order.get("order_date", "")
+        if o_date:
+            if not cust["first_visit"] or o_date < cust["first_visit"]:
+                cust["first_visit"] = o_date
+            if not cust["last_visit"] or o_date > cust["last_visit"]:
+                cust["last_visit"] = o_date
+
+    for cr in cust_rows:
+        cdict = dict(cr)
+        raw_phone = cdict.get("phone", "")
+        norm_p = clean_phone(raw_phone)
+        if norm_p not in grouped:
+            grouped[norm_p] = {
+                "name": cdict.get("name", "Customer"),
+                "phone": raw_phone,
+                "normalized_phone": norm_p,
+                "place": cdict.get("place", ""),
+                "address": cdict.get("address", ""),
+                "total_orders": 0,
+                "total_spent": 0.0,
+                "first_visit": "—",
+                "last_visit": "—",
+                "orders": []
+            }
+
+    result = list(grouped.values())
+    result.sort(key=lambda x: x["last_visit"], reverse=True)
+    return result
+
+
+def delete_customer_by_phone(phone_number: str):
+    """Delete customer record(s) and all associated orders for a given phone number."""
+    norm_target = clean_phone(phone_number)
+    with get_connection() as conn:
+        all_custs = conn.execute("SELECT customer_id, phone FROM customers").fetchall()
+        matching_cids = [
+            c["customer_id"] for c in all_custs
+            if clean_phone(c["phone"]) == norm_target or c["phone"] == phone_number
+        ]
+
+        for cid in matching_cids:
+            conn.execute("DELETE FROM orders WHERE customer_id=?", (cid,))
+            conn.execute("DELETE FROM customers WHERE customer_id=?", (cid,))
+
+

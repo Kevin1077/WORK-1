@@ -44,6 +44,13 @@ _SEL_ATTACH_BTN = (
     "button[aria-label='Attach'],"
     "button[title='Attach']"
 )
+_SEL_SEND_BTN = (
+    "button[aria-label='Send'],"
+    "button[data-testid='send'],"
+    "span[data-icon='send'],"
+    "button[aria-label='Send message']"
+)
+_SEND_TIMEOUT_MS = 8_000   # max wait for the send button to appear
 _SEL_ATTACH_PREVIEW = (
     "div[data-testid='media-caption-input'],"   # image/video caption box
     "div[aria-label='Add a caption'],"           # caption box aria label fallback
@@ -440,3 +447,76 @@ def prepare_message(phone_number: str, message: str) -> None:
         raise
 
     LOGGER.info("WhatsApp message prepared in %.2fs", time.perf_counter() - t0)
+
+
+def send_message(phone_number: str, message: str) -> None:
+    """Open WhatsApp Web chat for phone_number, pre-fill message, and auto-send it.
+
+    Unlike prepare_message(), this function clicks the WhatsApp send button
+    automatically — use for broadcast/bulk scenarios where unattended sending
+    is desired. Individual one-off messages should still use prepare_message()
+    so staff can review before sending.
+    """
+    t0 = time.perf_counter()
+    phone = _normalise_phone(phone_number)
+
+    try:
+        page = _get_page()
+        _ensure_logged_in(page)
+        _open_chat_url(page, phone, message)
+
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+
+        # Verify the message is actually in the composer before pressing send
+        try:
+            composer = page.query_selector(_SEL_COMPOSER)
+            if not composer:
+                raise WhatsAppWebError("Could not locate message composer to verify text before auto-send.")
+        except Exception as exc:
+            raise WhatsAppWebError(f"Composer not ready before auto-send: {exc}") from exc
+
+        # Small settle delay so WhatsApp has decoded the URL-encoded text
+        page.wait_for_timeout(800)
+
+        # Trigger send — try clicking the send button, fall back to pressing Enter
+        sent = False
+        try:
+            send_btn = page.wait_for_selector(_SEL_SEND_BTN, timeout=_SEND_TIMEOUT_MS)
+            if send_btn:
+                send_btn.click()
+                sent = True
+                LOGGER.info("Auto-sent via send button click for +%s", phone)
+        except Exception as exc:
+            LOGGER.debug("Send button not found (%s), falling back to Enter key.", exc)
+
+        if not sent:
+            # Fallback: focus composer and press Enter
+            try:
+                composer = page.query_selector(_SEL_COMPOSER)
+                if composer:
+                    composer.click()
+                    page.keyboard.press("Enter")
+                    sent = True
+                    LOGGER.info("Auto-sent via Enter key for +%s", phone)
+            except Exception as exc:
+                raise WhatsAppWebError(
+                    f"Could not auto-send message for +{phone}: {exc}"
+                ) from exc
+
+        if not sent:
+            raise WhatsAppWebError(
+                f"Auto-send failed for +{phone}: neither send button click nor Enter key worked."
+            )
+
+        # Brief wait so the message registers before the caller moves to next recipient
+        page.wait_for_timeout(500)
+
+    except Exception as exc:
+        if "closed" in str(exc).lower():
+            raise WhatsAppWebError("The browser tab was closed before the operation could finish.") from exc
+        raise
+
+    LOGGER.info("WhatsApp message auto-sent in %.2fs", time.perf_counter() - t0)

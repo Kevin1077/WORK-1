@@ -145,6 +145,7 @@ class AppWindow:
             ("date_records", "📅", "Date Records"),
             ("progress",     "📊", "Progress"),
             ("all_orders",   "📋", "All Orders"),
+            ("customers",    "👥", "Customers"),
             ("price_list",   "💰", "Price List"),
         ]
         self._nav_btns = {}
@@ -238,6 +239,7 @@ class AppWindow:
         from ui.date_records  import DateRecordsFrame
         from ui.progress      import ProgressFrame
         from ui.all_orders    import AllOrdersFrame
+        from ui.customers     import CustomersFrame
         from ui.price_list    import PriceListFrame
 
         self.frames = {
@@ -247,6 +249,7 @@ class AppWindow:
             "date_records": DateRecordsFrame(self.content, self),
             "progress":     ProgressFrame(self.content, self),
             "all_orders":   AllOrdersFrame(self.content, self),
+            "customers":    CustomersFrame(self.content, self),
             "price_list":   PriceListFrame(self.content, self),
         }
 

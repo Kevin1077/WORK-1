@@ -1,15 +1,15 @@
 Initializing Database...
 Creating order for customer 13...
-Order created with ID: 21
+Order created with ID: 30
 Testing are_all_items_returned (initial state): False
 Marking item 1 as returned...
 Testing are_all_items_returned (one item returned): False
-Orders not returned: 16
-Orders returned: 5
+Orders not returned: 17
+Orders returned: 12
 Marking item 2 as returned...
 Testing are_all_items_returned (both items returned): True
-Orders not returned: 15
-Orders returned: 5
+Orders not returned: 16
+Orders returned: 12
 Testing update_order preservation...
-Item 58 returned status: 1
-Item 59 returned status: 1
+Item 78 returned status: 0
+Item 79 returned status: 0
