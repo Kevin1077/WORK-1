@@ -1,6 +1,7 @@
 """
 utils/dispatch_slip.py — PDF dispatch slip generator for Victory Drycleaners
-Generates tag-sized (100mm x 60mm) PDF slips for physical garments with Code128 barcodes.
+Generates tag-sized (101.6mm x 101.6mm / 4in x 4in) PDF slips for physical garments with Code128 barcodes,
+matching the die-cut label stock configured on the Honeywell IH-2 printer.
 1 slip per individual garment.
 """
 import os
@@ -57,9 +58,10 @@ def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
             tmp, f"victory_dispatch_slips_order_{order_id}.pdf"
         )
 
-    # Label size: 100mm width x 60mm height
-    page_width = 100 * mm
-    page_height = 60 * mm
+    # Label size: 101.6mm x 101.6mm (4in x 4in die-cut label stock, per printer driver "Edit Stock" settings)
+    page_width = 101.6 * mm
+    page_height = 101.6 * mm
+    # Keep margin comfortably inside the 1.3mm exposed liner on each side so nothing gets clipped
     margin = 4 * mm
 
     doc = SimpleDocTemplate(
@@ -110,20 +112,24 @@ def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
                 temp_files.append(tf.name)
 
                 # ── Header ──
+                story.append(Spacer(1, 3 * mm))
                 story.append(Paragraph(BRANCH_NAME, st["header"]))
-                story.append(Spacer(1, 1 * mm))
+                story.append(Spacer(1, 2 * mm))
                 story.append(HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceAfter=2))
+                story.append(Spacer(1, 3 * mm))
 
                 # ── Barcode ──
-                # Barcode Image flowable (width 55mm, height 13mm)
-                img = Image(tf.name, width=55 * mm, height=13 * mm)
+                # Barcode Image flowable (width 70mm, height 20mm) — sized up to use the taller 101.6mm label
+                img = Image(tf.name, width=70 * mm, height=20 * mm)
                 img.hAlign = "CENTER"
                 story.append(img)
+                story.append(Spacer(1, 2 * mm))
 
                 # Reference Code text below barcode
                 story.append(Paragraph(ref_code, st["ref_code"]))
-                story.append(Spacer(1, 1 * mm))
+                story.append(Spacer(1, 3 * mm))
                 story.append(HRFlowable(width="100%", thickness=0.4, color=colors.black, spaceAfter=2))
+                story.append(Spacer(1, 3 * mm))
 
                 # ── Garment & Customer Info ──
                 item_desc = f"{cloth_type}"
@@ -133,9 +139,11 @@ def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
                     item_desc += f" ({garment_counter}/{total_garments})"
 
                 story.append(Paragraph(f"<b>Cust:</b> {cust_name}", st["value"]))
+                story.append(Spacer(1, 1.5 * mm))
                 story.append(Paragraph(f"<b>Item:</b> {item_desc}", st["value"]))
 
                 if notes_text:
+                    story.append(Spacer(1, 1.5 * mm))
                     story.append(Paragraph(f"<b>Remarks:</b> {notes_text}", st["remarks"]))
 
                 # Page break between garments
