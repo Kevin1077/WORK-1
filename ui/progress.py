@@ -3,12 +3,27 @@ ui/progress.py — Progress tracking view with charts for Revenue and Order Coun
 Provides Day, Week, Month, Year filter views using matplotlib embedded in Tkinter.
 """
 import tkinter as tk
-from tkinter import ttk, messagebox
 from datetime import datetime
 
 from ui.theme import COLORS, FONTS
 from ui.widgets import make_btn
 import database as db
+
+_MONTH_ABBR = [
+    "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+]
+
+
+def _fmt_period(period: str, mode: str) -> str:
+    """Convert a raw period string to a human-readable label."""
+    if mode == "month" and len(period) == 7:  # 'YYYY-MM'
+        try:
+            year, m = period.split("-")
+            return f"{_MONTH_ABBR[int(m)]} {year}"
+        except (ValueError, IndexError):
+            return period
+    return period
 
 try:
     import matplotlib
@@ -115,97 +130,61 @@ class ProgressFrame(tk.Frame):
             self._canvas = None
 
         if not data:
-            lbl = tk.Label(
+            tk.Label(
                 self._graph_container,
                 text=f"No order records available for {title_suffix}.",
                 bg=COLORS["card_bg"], fg=COLORS["text_muted"], font=FONTS["large"]
-            )
-            lbl.pack(expand=True)
+            ).pack(expand=True)
             return
 
-        periods  = [d["period"]      for d in data]
+        # Convert period strings to readable labels
+        labels   = [_fmt_period(d["period"], self._current_period) for d in data]
         revenues = [d["revenue"]     for d in data]
         counts   = [d["order_count"] for d in data]
+        x_pos    = list(range(len(labels)))
 
         # ── Design constants ────────────────────────────────────────────────
-        CHART_BG    = "#1E1E1E"   # Dark grey chart + axes background
-        ORANGE      = "#FF9500"   # Vibrant orange — line, bars, markers edge
-        LABEL_COLOR = "#E0E0E0"   # Light grey — all text labels
-        GRID_COLOR  = "#444444"   # Faint dark grey gridlines
-        SPINE_COLOR = "#3A3A3C"   # Very dark — axis spines
+        CHART_BG    = "#1E1E1E"
+        ORANGE      = "#FF9500"
+        LABEL_COLOR = "#E0E0E0"
+        GRID_COLOR  = "#444444"
+        SPINE_COLOR = "#3A3A3C"
 
         fig = Figure(figsize=(10, 5), dpi=100, facecolor=COLORS["bg"])
-        fig.subplots_adjust(hspace=0.45)
+        fig.subplots_adjust(hspace=0.55, bottom=0.18)
+
+        def _style_ax(ax, title, ylabel):
+            """Apply common styling to an axes object."""
+            ax.set_facecolor(CHART_BG)
+            ax.set_title(title, fontsize=11, fontweight="bold", color=LABEL_COLOR, pad=8)
+            ax.set_ylabel(ylabel, fontsize=9, color=LABEL_COLOR)
+            ax.tick_params(colors=LABEL_COLOR, labelsize=8, which="both")
+            ax.grid(True, linestyle="--", linewidth=0.6, color=GRID_COLOR, alpha=0.8)
+            ax.set_axisbelow(True)
+            for spine in ax.spines.values():
+                spine.set_edgecolor(SPINE_COLOR)
+            # Sparse ticks when many data points
+            step = max(1, len(x_pos) // 10) if len(x_pos) > 10 else 1
+            tick_pos   = x_pos[::step]
+            tick_lbls  = labels[::step]
+            ax.set_xticks(tick_pos)
+            ax.set_xticklabels(tick_lbls, rotation=45, ha="right",
+                               fontsize=7, color=LABEL_COLOR)
 
         # ── Subplot 1: Revenue Trend (Line Chart) ────────────────────────────
         ax1 = fig.add_subplot(211)
-        ax1.set_facecolor(CHART_BG)
-
         ax1.plot(
-            periods, revenues,
-            color=ORANGE,
-            linewidth=2.5,
-            label="Revenue (₹)",
-            marker="o",
-            markersize=7,
-            markerfacecolor="#FFFFFF",   # Solid white fill
-            markeredgecolor=ORANGE,      # Orange border
-            markeredgewidth=2.5,
+            x_pos, revenues,
+            color=ORANGE, linewidth=2.5, marker="o", markersize=7,
+            markerfacecolor="#FFFFFF", markeredgecolor=ORANGE, markeredgewidth=2.5,
         )
-
-        ax1.set_title(
-            f"Revenue Trend ({title_suffix})",
-            fontsize=11, fontweight="bold", color=LABEL_COLOR, pad=8
-        )
-        ax1.set_ylabel("Revenue (₹)", fontsize=9, color=LABEL_COLOR)
-        ax1.tick_params(colors=LABEL_COLOR, labelsize=8, which="both")
-        ax1.xaxis.label.set_color(LABEL_COLOR)
-
-        # Subtle dashed gridlines
-        ax1.grid(True, linestyle="--", linewidth=0.6, color=GRID_COLOR, alpha=0.8)
-        ax1.set_axisbelow(True)
-
-        # Style axis spines
-        for spine in ax1.spines.values():
-            spine.set_edgecolor(SPINE_COLOR)
-
-        # Reduce x-tick density if many points
-        if len(periods) > 10:
-            ax1.set_xticks(range(0, len(periods), max(1, len(periods) // 10)))
+        _style_ax(ax1, f"Revenue Trend ({title_suffix})", "Revenue (₹)")
 
         # ── Subplot 2: Number of Orders (Bar Chart) ──────────────────────────
         ax2 = fig.add_subplot(212)
-        ax2.set_facecolor(CHART_BG)
-
-        ax2.bar(
-            periods, counts,
-            color=ORANGE,
-            width=0.5,
-            edgecolor=ORANGE,   # Match fill — no dark border
-            label="Orders Count",
-        )
-
-        ax2.set_title(
-            f"Number of Orders ({title_suffix})",
-            fontsize=11, fontweight="bold", color=LABEL_COLOR, pad=8
-        )
+        ax2.bar(x_pos, counts, color=ORANGE, width=0.6, edgecolor=ORANGE)
         ax2.set_xlabel("Time Period", fontsize=9, color=LABEL_COLOR)
-        ax2.set_ylabel("Orders Count", fontsize=9, color=LABEL_COLOR)
-        ax2.tick_params(colors=LABEL_COLOR, labelsize=8, which="both")
-        ax2.xaxis.label.set_color(LABEL_COLOR)
-        ax2.yaxis.label.set_color(LABEL_COLOR)
-
-        # Subtle dashed gridlines
-        ax2.grid(True, linestyle="--", linewidth=0.6, color=GRID_COLOR, alpha=0.8)
-        ax2.set_axisbelow(True)
-
-        # Style axis spines
-        for spine in ax2.spines.values():
-            spine.set_edgecolor(SPINE_COLOR)
-
-        # Reduce x-tick density if many points
-        if len(periods) > 10:
-            ax2.set_xticks(range(0, len(periods), max(1, len(periods) // 10)))
+        _style_ax(ax2, f"Number of Orders ({title_suffix})", "Orders")
 
         # ── Embed into Tkinter canvas ────────────────────────────────────────
         canvas = FigureCanvasTkAgg(fig, master=self._graph_container)

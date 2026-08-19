@@ -144,3 +144,5 @@ class PriceListFrame(tk.Frame):
         ):
             db.delete_price(cloth)
             self.refresh()
+            messagebox.showinfo("Deleted", f"'{cloth}' has been removed from the price list.", parent=self)
+

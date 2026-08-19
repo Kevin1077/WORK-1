@@ -180,15 +180,8 @@ class OrderDetailsPopup(tk.Toplevel):
             chk_frame = tk.Frame(row_f, bg=row_bg)
             chk_frame.pack(side="left", padx=6, pady=4)
 
-            def _make_unit_toggle(uid, v, item_id):
-                def _cmd():
-                    db.update_unit_returned(uid, v.get())
-                    # Also update the legacy item_returned flag based on all units
-                    order = db.get_order_full(item_id)  # item_id is a proxy; we don't need full order
-                return _cmd
-
             for unit in units:
-                uid = unit["unit_id"]
+                uid   = unit["unit_id"]
                 u_num = unit["unit_number"]
                 chk_var = tk.BooleanVar(value=bool(unit.get("returned", 0)))
 
