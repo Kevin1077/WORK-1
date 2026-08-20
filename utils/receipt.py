@@ -44,9 +44,27 @@ def _get_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageF
 
 def _build_receipt_image(order_data: dict) -> Image.Image:
     """Build and return a PIL Image object of the receipt (RGB mode, B&W design)."""
-    # Canvas config
-    img_width = 600
-    margin = 35
+    # Canvas config based on paper size setting
+    try:
+        import database as db
+        psize = db.get_setting("receipt_paper_size", "80mm")
+    except Exception:
+        psize = "80mm"
+
+    if psize == "58mm":
+        img_width = 384
+        margin = 20
+    elif psize == "A4":
+        img_width = 800
+        margin = 45
+    elif psize == "A5":
+        img_width = 600
+        margin = 35
+    else:
+        # 80mm Thermal (Standard POS)
+        img_width = 576
+        margin = 30
+
     content_width = img_width - (2 * margin)
     bg_color = (255, 255, 255)
     fg_color = (0, 0, 0)
@@ -540,32 +558,390 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
     return output_path
 
 
+def silent_print_image(image_path: str, printer_name: str = None,
+                       margin_left_mm: float = None, margin_top_mm: float = None,
+                       scale_pct: float = None, copies: int = None) -> bool:
+    """Silently print an image file directly to a printer with size, scale, margin, and copy adjustments."""
+    is_barcode = "dispatch" in image_path.lower() or "slip" in image_path.lower()
+    setting_pfx = "barcode" if is_barcode else "receipt"
+
+    try:
+        import database as db
+        if not printer_name:
+            printer_name = db.get_setting(f"printer_{setting_pfx}", "")
+        if margin_left_mm is None:
+            margin_left_mm = float(db.get_setting(f"{setting_pfx}_margin_left", "0"))
+        if margin_top_mm is None:
+            margin_top_mm = float(db.get_setting(f"{setting_pfx}_margin_top", "0"))
+        if scale_pct is None:
+            scale_pct = float(db.get_setting(f"{setting_pfx}_scale", "100"))
+        if copies is None:
+            copies = int(db.get_setting(f"{setting_pfx}_copies", "1"))
+    except Exception:
+        if margin_left_mm is None: margin_left_mm = 0
+        if margin_top_mm is None: margin_top_mm = 0
+        if scale_pct is None: scale_pct = 100
+        if copies is None: copies = 1
+
+    if os.name == "nt":
+        # 1. Try Win32 GDI direct printer DC (100% silent, fully adjustable)
+        try:
+            import win32print
+            import win32ui
+            import win32con
+            from PIL import Image, ImageWin
+
+            target_printer = printer_name or win32print.GetDefaultPrinter()
+            img = Image.open(image_path)
+
+            hDC = win32ui.CreateDC()
+            hDC.CreatePrinterDC(target_printer)
+
+            printable_w = hDC.GetDeviceCaps(win32con.HORZRES)
+            printable_h = hDC.GetDeviceCaps(win32con.VERTRES)
+            dpi_x = hDC.GetDeviceCaps(win32con.LOGPIXELSX) or 300
+            dpi_y = hDC.GetDeviceCaps(win32con.LOGPIXELSY) or 300
+
+            # Convert mm margins to printer DC pixels
+            offset_x = int((margin_left_mm / 25.4) * dpi_x)
+            offset_y = int((margin_top_mm / 25.4) * dpi_y)
+
+            img_w, img_h = img.size
+
+            # Base fit scale * custom scale_pct
+            base_scale = min(printable_w / img_w, printable_h / img_h)
+            custom_scale = base_scale * (scale_pct / 100.0)
+
+            target_w = int(img_w * custom_scale)
+            target_h = int(img_h * custom_scale)
+
+            x1 = offset_x
+            y1 = offset_y
+            x2 = offset_x + target_w
+            y2 = offset_y + target_h
+
+            hDC.StartDoc(os.path.basename(image_path))
+            dib = ImageWin.Dib(img)
+
+            for _ in range(max(1, copies)):
+                hDC.StartPage()
+                dib.draw(hDC.GetHandleOutput(), (x1, y1, x2, y2))
+                hDC.EndPage()
+
+            hDC.EndDoc()
+            hDC.DeleteDC()
+            return True
+        except Exception:
+            pass
+
+        # 2. Try PowerShell print
+        try:
+            import subprocess
+            target_printer = printer_name or ""
+            ps_cmd = (
+                f"Start-Process -FilePath '{image_path}' "
+                + (f"-Verb PrintTo -ArgumentList '\"{target_printer}\"' " if target_printer else "-Verb Print ")
+                + "-WindowStyle Hidden"
+            )
+            subprocess.run(["powershell", "-Command", ps_cmd], check=True, creationflags=0x08000000)
+            return True
+        except Exception:
+            pass
+
+        # 3. Fallback ShellExecute
+        try:
+            import win32api
+            if printer_name:
+                win32api.ShellExecute(0, "printto", image_path, f'"{printer_name}"', ".", 0)
+            else:
+                win32api.ShellExecute(0, "print", image_path, None, ".", 0)
+            return True
+        except Exception:
+            if hasattr(os, "startfile"):
+                os.startfile(image_path, "print")
+                return True
+    return False
+
+
+def silent_print_pdf(pdf_path: str, printer_name: str = None) -> bool:
+    """Silently print a PDF document directly to a printer without showing a preview window."""
+    if not printer_name:
+        try:
+            import database as db
+            if "dispatch" in pdf_path.lower() or "challan" in pdf_path.lower():
+                printer_name = db.get_setting("printer_dispatch", "") or db.get_setting("printer_receipt", "")
+            else:
+                printer_name = db.get_setting("printer_receipt", "")
+        except Exception:
+            printer_name = ""
+
+    if os.name == "nt":
+        # 1. Try Win32 ShellExecute / win32api
+        try:
+            import win32api
+            if printer_name:
+                win32api.ShellExecute(0, "printto", pdf_path, f'"{printer_name}"', ".", 0)
+            else:
+                win32api.ShellExecute(0, "print", pdf_path, None, ".", 0)
+            return True
+        except Exception:
+            pass
+
+        # 2. Try PowerShell hidden print
+        try:
+            import subprocess
+            target_printer = printer_name or ""
+            ps_cmd = (
+                f"Start-Process -FilePath '{pdf_path}' "
+                + (f"-Verb PrintTo -ArgumentList '\"{target_printer}\"' " if target_printer else "-Verb Print ")
+                + "-WindowStyle Hidden"
+            )
+            subprocess.run(["powershell", "-Command", ps_cmd], check=True, creationflags=0x08000000)
+            return True
+        except Exception:
+            pass
+
+        # 3. Fallback os.startfile
+        try:
+            if hasattr(os, "startfile"):
+                try:
+                    os.startfile(pdf_path, "print")
+                except Exception:
+                    os.startfile(pdf_path)
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -> str:
+    """
+    Generate an A5 PNG receipt image matching Victory Laundry pre-printed paper template.
+    Leaves 5.7 cm top margin for pre-printed letterhead.
+    """
+    from datetime import datetime
+
+    if output_path is None:
+        import tempfile
+        output_path = os.path.join(
+            tempfile.gettempdir(), f"victory_challan_img_{order_data['order_id']}.png"
+        )
+
+    # A5 size at 300 DPI: 1754 x 2480 pixels
+    w, h = 1754, 2480
+    img = Image.new("RGB", (w, h), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # Margins & top offset (5.7 cm = 673 px at 300 DPI)
+    ml = 118          # 10 mm left margin
+    mr = 94           # 8 mm right margin
+    content_w = w - ml - mr  # 1542 px
+    y = 673           # 57 mm top offset for pre-printed letterhead
+
+    try:
+        font_bold   = ImageFont.truetype("arialbd.ttf", 32)
+        font_norm   = ImageFont.truetype("arial.ttf", 30)
+        font_sm     = ImageFont.truetype("arial.ttf", 26)
+        font_hdr    = ImageFont.truetype("arialbd.ttf", 32)
+        font_italic = ImageFont.truetype("ariali.ttf", 28)
+    except Exception:
+        font_bold   = ImageFont.load_default()
+        font_norm   = font_bold
+        font_sm     = font_bold
+        font_hdr    = font_bold
+        font_italic = font_bold
+
+    def _fmt_date_dots(iso: str) -> str:
+        try:
+            return datetime.strptime(iso, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except Exception:
+            return iso or ""
+
+    def _strip_country_code(phone: str) -> str:
+        raw = str(phone or "").strip()
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if raw.startswith(("00", "+0")) and len(digits) > 10:
+            digits = digits[2:]
+        if len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        return digits if digits else raw
+
+    order_id   = order_data.get("order_id", "")
+    cust_name  = order_data.get("name", "")
+    cust_phone = _strip_country_code(order_data.get("phone", ""))
+    cust_place = (order_data.get("place") or "").strip()
+    cust_addr  = (order_data.get("address") or "").strip()
+    payment    = (order_data.get("payment_method") or "").strip()
+    order_date = _fmt_date_dots(order_data.get("order_date", ""))
+
+    # Header Two Columns
+    left_w = int(content_w * 0.62)
+    right_x = ml + left_w + 48
+    lh = 48  # line height
+
+    # Left Column
+    ly = y
+    draw.text((ml, ly), "To    :", fill=(0, 0, 0), font=font_bold)
+    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_norm)
+    ly += lh
+
+    addr_lines = []
+    if cust_place:
+        addr_lines.append(cust_place)
+    if cust_addr:
+        for part in cust_addr.replace("\n", ",").split(","):
+            part = part.strip()
+            if part:
+                addr_lines.append(part)
+
+    if addr_lines:
+        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_sm)
+        ly += lh
+        for frag in addr_lines[1:]:
+            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_sm)
+            ly += lh
+
+    draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)
+    draw.text((ml + 120, ly), cust_phone, fill=(0, 0, 0), font=font_norm)
+
+    # Right Column
+    ry = y
+    draw.text((right_x, ry), "No.   :", fill=(0, 0, 0), font=font_bold)
+    draw.text((right_x + 100, ry), f"P{order_id}", fill=(0, 0, 0), font=font_norm)
+    ry += lh
+
+    draw.text((right_x, ry), "Date  :", fill=(0, 0, 0), font=font_bold)
+    draw.text((right_x + 100, ry), order_date, fill=(0, 0, 0), font=font_norm)
+    ry += lh
+
+    draw.text((right_x, ry), "Mode of Payment:", fill=(0, 0, 0), font=font_bold)
+    draw.text((right_x + 280, ry), payment, fill=(0, 0, 0), font=font_norm)
+
+    y = max(ly, ry) + 40
+
+    # Table Column Widths
+    cw_part = int(content_w * 0.45)
+    cw_bar  = int(content_w * 0.20)
+    cw_rem  = int(content_w * 0.20)
+    cw_amt  = int(content_w * 0.15)
+
+    col_x = [ml, ml + cw_part, ml + cw_part + cw_bar, ml + cw_part + cw_bar + cw_rem]
+
+    hdr_h = 60
+    row_h = 52
+
+    tbl_top = y
+
+    # Header Row Box
+    draw.rectangle([ml, y, ml + content_w, y + hdr_h], outline=(0, 0, 0), width=2)
+    draw.text((col_x[0] + 15, y + 12), "Particulars", fill=(0, 0, 0), font=font_hdr)
+    draw.text((col_x[1] + cw_bar // 2, y + 12), "Barcode", fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    draw.text((col_x[2] + cw_rem // 2, y + 12), "Remark", fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    draw.text((col_x[3] + cw_amt - 15, y + 12), "Amount", fill=(0, 0, 0), font=font_hdr, anchor="rt")
+    y += hdr_h
+
+    # Data Rows
+    items = order_data.get("items", [])
+    garment_counter = 1
+    total_garments = 0
+
+    for item in items:
+        cloth_type  = str(item.get("cloth_type", ""))
+        qty         = max(1, int(item.get("quantity", 1)))
+        rate        = float(item.get("price_per_unit", 0))
+        item_notes  = (item.get("item_notes") or "").strip()
+        particulars = cloth_type + " DC"
+
+        for _ in range(qty):
+            barcode_str = f"P{order_id}-{garment_counter}"
+            text_y = y + 10
+
+            draw.text((col_x[0] + 15, text_y), particulars, fill=(0, 0, 0), font=font_norm)
+            draw.text((col_x[1] + cw_bar // 2, text_y), barcode_str, fill=(0, 0, 0), font=font_norm, anchor="mt")
+            if item_notes:
+                draw.text((col_x[2] + cw_rem // 2, text_y), item_notes, fill=(0, 0, 0), font=font_norm, anchor="mt")
+            draw.text((col_x[3] + cw_amt - 15, text_y), f"{rate:.2f}", fill=(0, 0, 0), font=font_norm, anchor="rt")
+
+            y += row_h
+            garment_counter += 1
+
+    total_garments = garment_counter - 1
+
+    # Divider line
+    draw.line([(ml, y), (ml + content_w, y)], fill=(0, 0, 0), width=2)
+    y += 10
+
+    # TOTAL row
+    total_h = 60
+    total_val = f"{order_data.get('total_amount', 0):.2f}"
+    text_y = y + 12
+
+    draw.text((col_x[0] + 15, text_y), "TOTAL", fill=(0, 0, 0), font=font_hdr)
+    draw.text((col_x[1] + cw_bar // 2, text_y), str(total_garments), fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    draw.text((col_x[3] + cw_amt - 15, text_y), total_val, fill=(0, 0, 0), font=font_hdr, anchor="rt")
+    y += total_h
+
+    tbl_bottom = y
+
+    # Outer border + Column dividers
+    draw.rectangle([ml, tbl_top, ml + content_w, tbl_bottom], outline=(0, 0, 0), width=3)
+    for cx in col_x[1:]:
+        draw.line([(cx, tbl_top), (cx, tbl_bottom)], fill=(0, 0, 0), width=2)
+
+    # Footer
+    y += 60
+    draw.text((ml + content_w, y), "For Victory Laundry", fill=(0, 0, 0), font=font_bold, anchor="rt")
+    y += 45
+    draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
+
+    img.save(output_path, "PNG")
+    return output_path
+
+
 def open_receipt(order_data: dict):
-    """Generate and open the receipt PNG image with the default viewer."""
-    path = generate_receipt(order_data)
-    os.startfile(path)
+    """Generate and print or open the receipt PNG image based on print_mode setting."""
+    try:
+        import database as db
+        print_mode = db.get_setting("print_mode", "direct")
+    except Exception:
+        print_mode = "direct"
+
+    path = generate_dispatch_challan_image(order_data)
+    if print_mode == "preview":
+        if hasattr(os, "startfile"):
+            os.startfile(path)
+    else:
+        silent_print_image(path)
+    return path
 
 
 def open_receipt_pdf(order_data: dict, parent_window=None) -> str:
-    """Generate and print/open the dispatch challan PDF document."""
-    path = generate_dispatch_challan_pdf(order_data)
+    """Generate and print or open receipt based on print_mode setting."""
     try:
-        if hasattr(os, "startfile"):
-            try:
-                os.startfile(path, "print")
-            except Exception:
-                os.startfile(path)
-        else:
-            # Fall back for non-Windows platforms (open/preview)
-            import subprocess
-            import sys
-            if sys.platform == "darwin":
-                subprocess.run(["open", path], check=False)
-            else:
-                subprocess.run(["xdg-open", path], check=False)
+        import database as db
+        print_mode = db.get_setting("print_mode", "direct")
     except Exception:
-        pass
-    return path
+        print_mode = "direct"
+
+    if print_mode == "preview":
+        path = generate_dispatch_challan_pdf(order_data)
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(path)
+            else:
+                import subprocess, sys
+                if sys.platform == "darwin":
+                    subprocess.run(["open", path], check=False)
+                else:
+                    subprocess.run(["xdg-open", path], check=False)
+        except Exception:
+            pass
+        return path
+    else:
+        # Direct automatic GDI print with 5.7cm pre-printed letterhead offset
+        return open_receipt(order_data)
+
+
 
 
 def normalize_whatsapp_phone(phone: object) -> str:

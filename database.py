@@ -67,6 +67,11 @@ def init_db():
             cloth_type    TEXT PRIMARY KEY,
             default_price REAL NOT NULL DEFAULT 0.0
         );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     """)
 
     # ── Migration: add columns to existing databases ──
@@ -84,6 +89,11 @@ def init_db():
             returned    INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (item_id) REFERENCES order_items(item_id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     """)
     # Backfill units for existing items that have none yet
     _backfill_item_units(conn)
@@ -95,8 +105,49 @@ def init_db():
     for ct, pr in defaults:
         c.execute("INSERT OR IGNORE INTO price_list VALUES (?, ?)", (ct, pr))
 
+    default_settings = [
+        ("print_mode", "direct"),
+        ("printer_receipt", ""),
+        ("printer_dispatch", ""),
+        ("receipt_paper_size", "80mm"),
+        ("receipt_scale", "100"),
+        ("receipt_margin_left", "0"),
+        ("receipt_margin_top", "0"),
+        ("receipt_copies", "1"),
+        ("barcode_label_size", "35x40mm"),
+        ("barcode_scale", "100"),
+        ("barcode_margin_left", "0"),
+        ("barcode_margin_top", "0"),
+        ("barcode_copies", "1"),
+    ]
+    for skey, sval in default_settings:
+        c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (skey, sval))
+
     conn.commit()
     conn.close()
+
+
+def get_setting(key: str, default: str = "") -> str:
+    """Retrieve a setting value from SQLite by key."""
+    try:
+        with get_connection() as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+            if row and row["value"] is not None:
+                return str(row["value"])
+    except Exception:
+        pass
+    return default
+
+
+def set_setting(key: str, value: str) -> None:
+    """Save or update a setting value in SQLite."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, str(value)),
+        )
+
 
 
 def _migrate_add_column(cursor, table, column, col_def):

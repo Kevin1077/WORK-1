@@ -139,14 +139,15 @@ class AppWindow:
 
         # Nav items
         self._nav_items = [
-            ("dashboard",    "🏠", "Dashboard"),
-            ("new_order",    "➕", "New Order"),
-            ("search",       "🔍", "Search Orders"),
-            ("date_records", "📅", "Date Records"),
-            ("progress",     "📊", "Progress"),
-            ("all_orders",   "📋", "All Orders"),
-            ("customers",    "👥", "Customers"),
-            ("price_list",   "💰", "Price List"),
+            ("dashboard",      "🏠", "Dashboard"),
+            ("new_order",      "➕", "New Order"),
+            ("search",         "🔍", "Search Orders"),
+            ("date_records",   "📅", "Date Records"),
+            ("progress",       "📊", "Progress"),
+            ("all_orders",     "📋", "All Orders"),
+            ("customers",      "👥", "Customers"),
+            ("price_list",     "💰", "Price List"),
+            ("print_settings", "⚙️", "Print Settings"),
         ]
         self._nav_btns = {}
         self._current = None
@@ -233,24 +234,26 @@ class AppWindow:
     # ── Frame management ──────────────────────────────────────────────────────
 
     def _create_frames(self):
-        from ui.dashboard     import DashboardFrame
-        from ui.new_order     import NewOrderFrame
-        from ui.search_orders import SearchOrdersFrame
-        from ui.date_records  import DateRecordsFrame
-        from ui.progress      import ProgressFrame
-        from ui.all_orders    import AllOrdersFrame
-        from ui.customers     import CustomersFrame
-        from ui.price_list    import PriceListFrame
+        from ui.dashboard      import DashboardFrame
+        from ui.new_order      import NewOrderFrame
+        from ui.search_orders  import SearchOrdersFrame
+        from ui.date_records   import DateRecordsFrame
+        from ui.progress       import ProgressFrame
+        from ui.all_orders     import AllOrdersFrame
+        from ui.customers      import CustomersFrame
+        from ui.price_list     import PriceListFrame
+        from ui.print_settings import PrintSettingsFrame
 
         self.frames = {
-            "dashboard":    DashboardFrame(self.content, self),
-            "new_order":    NewOrderFrame(self.content, self),
-            "search":       SearchOrdersFrame(self.content, self),
-            "date_records": DateRecordsFrame(self.content, self),
-            "progress":     ProgressFrame(self.content, self),
-            "all_orders":   AllOrdersFrame(self.content, self),
-            "customers":    CustomersFrame(self.content, self),
-            "price_list":   PriceListFrame(self.content, self),
+            "dashboard":      DashboardFrame(self.content, self),
+            "new_order":      NewOrderFrame(self.content, self),
+            "search":         SearchOrdersFrame(self.content, self),
+            "date_records":   DateRecordsFrame(self.content, self),
+            "progress":       ProgressFrame(self.content, self),
+            "all_orders":     AllOrdersFrame(self.content, self),
+            "customers":      CustomersFrame(self.content, self),
+            "price_list":     PriceListFrame(self.content, self),
+            "print_settings": PrintSettingsFrame(self.content, self),
         }
 
     def show_frame(self, name: str):
