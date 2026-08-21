@@ -10,11 +10,11 @@ from ui.widgets import make_btn, make_entry
 import database as db
 
 
-def _get_system_printers():
+def _get_system_printers(fast_only: bool = False):
     """Return a comprehensive list of available printer names on Windows."""
     printers_set = {"(System Default Printer)"}
     if os.name == "nt":
-        # 1. Try win32print EnumPrinters with multiple flag combinations
+        # 1. Fast native win32print EnumPrinters (0ms response)
         try:
             import win32print
             flags = (
@@ -29,18 +29,19 @@ def _get_system_printers():
         except Exception:
             pass
 
-        # 2. Try WMI Win32_Printer via powershell as fallback/supplement
-        try:
-            import subprocess
-            cmd = "powershell -Command \"Get-WmiObject Win32_Printer | Select-Object -ExpandProperty Name\""
-            res = subprocess.run(cmd, capture_output=True, text=True, shell=True, creationflags=0x08000000)
-            if res.returncode == 0 and res.stdout:
-                for line in res.stdout.splitlines():
-                    name = line.strip()
-                    if name:
-                        printers_set.add(name)
-        except Exception:
-            pass
+        # 2. Try WMI Win32_Printer via powershell as fallback only if fast_only is False and win32print returned nothing
+        if not fast_only and len(printers_set) <= 1:
+            try:
+                import subprocess
+                cmd = "powershell -Command \"Get-WmiObject Win32_Printer | Select-Object -ExpandProperty Name\""
+                res = subprocess.run(cmd, capture_output=True, text=True, shell=True, creationflags=0x08000000)
+                if res.returncode == 0 and res.stdout:
+                    for line in res.stdout.splitlines():
+                        name = line.strip()
+                        if name:
+                            printers_set.add(name)
+            except Exception:
+                pass
 
     res_list = ["(System Default Printer)"]
     sorted_others = sorted([p for p in printers_set if p != "(System Default Printer)"])
@@ -64,7 +65,7 @@ class PrintSettingsFrame(tk.Frame):
             fg=COLORS["accent"], font=FONTS["title"]
         ).pack(side="left", padx=20, pady=14)
 
-        make_btn(hdr, "🔄 Refresh Printers", self.refresh, "neutral").pack(side="right", padx=20, pady=14)
+        make_btn(hdr, "🔄 Refresh Printers", lambda: self.refresh(full_scan=True), "neutral").pack(side="right", padx=20, pady=14)
         tk.Frame(self, bg=COLORS["border"], height=1).pack(fill="x")
 
         # Scrollable container for settings options
@@ -267,7 +268,7 @@ class PrintSettingsFrame(tk.Frame):
         )
         self._status_lbl.pack(anchor="w", pady=(12, 0))
 
-    def refresh(self):
+    def refresh(self, full_scan: bool = False):
         """Load current settings from database."""
         mode = db.get_setting("print_mode", "direct")
         self._mode_var.set(mode)
@@ -300,8 +301,8 @@ class PrintSettingsFrame(tk.Frame):
         self._b_mtop_var.set(db.get_setting("barcode_margin_top", "0"))
         self._b_copies_var.set(db.get_setting("barcode_copies", "1"))
 
-        # Update available printers list
-        printers_list = _get_system_printers()
+        # Update available printers list (fast 0ms native pass on tab switch)
+        printers_list = _get_system_printers(fast_only=not full_scan)
         self._receipt_cb["values"] = printers_list
         self._dispatch_cb["values"] = printers_list
 

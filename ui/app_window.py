@@ -234,35 +234,31 @@ class AppWindow:
     # ── Frame management ──────────────────────────────────────────────────────
 
     def _create_frames(self):
-        from ui.dashboard      import DashboardFrame
-        from ui.new_order      import NewOrderFrame
-        from ui.search_orders  import SearchOrdersFrame
-        from ui.date_records   import DateRecordsFrame
-        from ui.progress       import ProgressFrame
-        from ui.all_orders     import AllOrdersFrame
-        from ui.customers      import CustomersFrame
-        from ui.price_list     import PriceListFrame
-        from ui.print_settings import PrintSettingsFrame
-
-        self.frames = {
-            "dashboard":      DashboardFrame(self.content, self),
-            "new_order":      NewOrderFrame(self.content, self),
-            "search":         SearchOrdersFrame(self.content, self),
-            "date_records":   DateRecordsFrame(self.content, self),
-            "progress":       ProgressFrame(self.content, self),
-            "all_orders":     AllOrdersFrame(self.content, self),
-            "customers":      CustomersFrame(self.content, self),
-            "price_list":     PriceListFrame(self.content, self),
-            "print_settings": PrintSettingsFrame(self.content, self),
+        self.frames = {}
+        self._frame_factories = {
+            "dashboard":      lambda: __import__("ui.dashboard", fromlist=["DashboardFrame"]).DashboardFrame(self.content, self),
+            "new_order":      lambda: __import__("ui.new_order", fromlist=["NewOrderFrame"]).NewOrderFrame(self.content, self),
+            "search":         lambda: __import__("ui.search_orders", fromlist=["SearchOrdersFrame"]).SearchOrdersFrame(self.content, self),
+            "date_records":   lambda: __import__("ui.date_records", fromlist=["DateRecordsFrame"]).DateRecordsFrame(self.content, self),
+            "progress":       lambda: __import__("ui.progress", fromlist=["ProgressFrame"]).ProgressFrame(self.content, self),
+            "all_orders":     lambda: __import__("ui.all_orders", fromlist=["AllOrdersFrame"]).AllOrdersFrame(self.content, self),
+            "customers":      lambda: __import__("ui.customers", fromlist=["CustomersFrame"]).CustomersFrame(self.content, self),
+            "price_list":     lambda: __import__("ui.price_list", fromlist=["PriceListFrame"]).PriceListFrame(self.content, self),
+            "print_settings": lambda: __import__("ui.print_settings", fromlist=["PrintSettingsFrame"]).PrintSettingsFrame(self.content, self),
         }
 
     def show_frame(self, name: str):
         if self._current and self._current in self.frames:
             self.frames[self._current].pack_forget()
-        self.frames[name].pack(fill="both", expand=True)
-        self._current = name
-        self._activate_nav(name)
-        frame = self.frames[name]
-        if hasattr(frame, "refresh"):
-            frame.refresh()
+
+        if name not in self.frames and name in self._frame_factories:
+            self.frames[name] = self._frame_factories[name]()
+
+        if name in self.frames:
+            self.frames[name].pack(fill="both", expand=True)
+            self._current = name
+            self._activate_nav(name)
+            frame = self.frames[name]
+            if hasattr(frame, "refresh"):
+                frame.refresh()
 

@@ -170,15 +170,15 @@ def _build_receipt_image(order_data: dict) -> Image.Image:
     draw.text((margin, y), "Customer Details", fill=fg_color, font=font_section)
     y += 22
 
-    draw.text((margin, y), f"Name   : {order_data.get('name','')}", fill=fg_color, font=font_normal)
+    draw.text((margin, y), f"Name   : {order_data.get('name','')}", fill=fg_color, font=font_bold)
     y += 18
-    draw.text((margin, y), f"Phone  : {order_data.get('phone','')}", fill=fg_color, font=font_normal)
+    draw.text((margin, y), f"Phone  : {order_data.get('phone','')}", fill=fg_color, font=font_bold)
     y += 18
     if order_data.get("place"):
-        draw.text((margin, y), f"Place  : {order_data['place']}", fill=fg_color, font=font_normal)
+        draw.text((margin, y), f"Place  : {order_data['place']}", fill=fg_color, font=font_bold)
         y += 18
     if order_data.get("address"):
-        draw.text((margin, y), f"Address: {order_data['address']}", fill=fg_color, font=font_normal)
+        draw.text((margin, y), f"Address: {order_data['address']}", fill=fg_color, font=font_bold)
         y += 18
     y += 6
 
@@ -401,7 +401,7 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
 
     # "To    : <name>"
     c.setFont(F_BOLD, S_NORM);  c.drawString(lx, ly, "To    :")
-    c.setFont(F_NORM, S_NORM);  c.drawString(indent, ly, _trunc(cust_name, F_NORM, S_NORM, val_w))
+    c.setFont(F_BOLD, S_NORM);  c.drawString(indent, ly, _trunc(cust_name, F_BOLD, S_NORM, val_w))
     ly -= LH
 
     # Address — build a list of non-empty address fragments to print
@@ -416,12 +416,12 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
                 addr_lines.append(part)
 
     if addr_lines:
-        c.setFont(F_NORM, S_SM)
+        c.setFont(F_NORM, S_NORM)
         # First address fragment: comma-prefixed, aligned under value column
-        c.drawString(indent, ly, _trunc(", " + addr_lines[0], F_NORM, S_SM, val_w + lbl_w))
+        c.drawString(indent, ly, _trunc(", " + addr_lines[0], F_NORM, S_NORM, val_w + lbl_w))
         ly -= LH
         for frag in addr_lines[1:]:
-            c.drawString(indent + 2 * mm, ly, _trunc(frag + ",", F_NORM, S_SM, val_w + lbl_w - 2 * mm))
+            c.drawString(indent + 2 * mm, ly, _trunc(frag + ",", F_NORM, S_NORM, val_w + lbl_w - 2 * mm))
             ly -= LH
 
     # "Phone : <number>"
@@ -811,7 +811,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
     # Left Column
     ly = y
     draw.text((ml, ly), "To    :", fill=(0, 0, 0), font=font_bold)
-    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_norm)
+    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_bold)
     ly += lh
 
     addr_lines = []
@@ -824,10 +824,10 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
                 addr_lines.append(part)
 
     if addr_lines:
-        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_sm)
+        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_norm)
         ly += lh
         for frag in addr_lines[1:]:
-            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_sm)
+            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_norm)
             ly += lh
 
     draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)

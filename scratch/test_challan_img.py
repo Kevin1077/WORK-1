@@ -69,7 +69,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
     # Left Column
     ly = y
     draw.text((ml, ly), "To    :", fill=(0, 0, 0), font=font_bold)
-    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_norm)
+    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_bold)
     ly += lh
 
     addr_lines = []
@@ -82,10 +82,10 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
                 addr_lines.append(part)
 
     if addr_lines:
-        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_sm)
+        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_norm)
         ly += lh
         for frag in addr_lines[1:]:
-            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_sm)
+            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_norm)
             ly += lh
 
     draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)
