@@ -427,6 +427,7 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
     # "Phone : <number>"
     c.setFont(F_BOLD, S_NORM);  c.drawString(lx, ly, "Phone :")
     c.setFont(F_NORM, S_NORM);  c.drawString(indent, ly, cust_phone)
+    ly -= LH
 
     # --- Right column: each label drawn with its own indent width ---
     rx = RIGHT_X
@@ -602,23 +603,51 @@ def silent_print_image(image_path: str, printer_name: str = None,
             dpi_x = hDC.GetDeviceCaps(win32con.LOGPIXELSX) or 300
             dpi_y = hDC.GetDeviceCaps(win32con.LOGPIXELSY) or 300
 
-            # Convert mm margins to printer DC pixels
-            offset_x = int((margin_left_mm / 25.4) * dpi_x)
-            offset_y = int((margin_top_mm / 25.4) * dpi_y)
+            phys_w = hDC.GetDeviceCaps(win32con.PHYSICALWIDTH) or printable_w
+            phys_h = hDC.GetDeviceCaps(win32con.PHYSICALHEIGHT) or printable_h
+            phys_off_x = hDC.GetDeviceCaps(win32con.PHYSICALOFFSETX) or 0
+            phys_off_y = hDC.GetDeviceCaps(win32con.PHYSICALOFFSETY) or 0
 
             img_w, img_h = img.size
 
-            # Base fit scale * custom scale_pct
-            base_scale = min(printable_w / img_w, printable_h / img_h)
-            custom_scale = base_scale * (scale_pct / 100.0)
+            # DPI of image (defaults to 300 for generated receipts/challans)
+            img_dpi = img.info.get("dpi", (300, 300))[0] or 300
 
-            target_w = int(img_w * custom_scale)
-            target_h = int(img_h * custom_scale)
+            # Calculate physical dimensions in inches
+            img_w_inches = img_w / float(img_dpi)
+            img_h_inches = img_h / float(img_dpi)
+            phys_w_inches = phys_w / float(dpi_x)
+            phys_h_inches = phys_h / float(dpi_y)
 
-            x1 = offset_x
-            y1 = offset_y
-            x2 = offset_x + target_w
-            y2 = offset_y + target_h
+            # 1:1 scale target dimensions on printer paper
+            if phys_w > 0 and abs(img_w_inches - phys_w_inches) < 0.35:
+                # Full page sheet match (e.g. A5 image printed on A5 paper sheet)
+                base_target_w = phys_w
+                base_target_h = phys_h
+            else:
+                # Scale based on physical inches to printer dots
+                base_target_w = int(img_w_inches * dpi_x)
+                base_target_h = int(img_h_inches * dpi_y)
+                # If image exceeds printable area (e.g. thermal roll or mismatch), constrain width
+                if base_target_w > printable_w:
+                    base_scale = printable_w / float(base_target_w)
+                    base_target_w = printable_w
+                    base_target_h = int(base_target_h * base_scale)
+
+            # Apply custom scale_pct
+            custom_scale = scale_pct / 100.0
+            target_w = int(base_target_w * custom_scale)
+            target_h = int(base_target_h * custom_scale)
+
+            # Convert user-configured margin offsets from mm to printer DC pixels
+            user_off_x = int((margin_left_mm / 25.4) * dpi_x)
+            user_off_y = int((margin_top_mm / 25.4) * dpi_y)
+
+            # Align top-left of image (0,0) with physical paper top-left (0,0) plus user margins
+            x1 = user_off_x - phys_off_x
+            y1 = user_off_y - phys_off_y
+            x2 = x1 + target_w
+            y2 = y1 + target_h
 
             hDC.StartDoc(os.path.basename(image_path))
             dib = ImageWin.Dib(img)
@@ -803,6 +832,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
 
     draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)
     draw.text((ml + 120, ly), cust_phone, fill=(0, 0, 0), font=font_norm)
+    ly += lh
 
     # Right Column
     ry = y
@@ -816,8 +846,9 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
 
     draw.text((right_x, ry), "Mode of Payment:", fill=(0, 0, 0), font=font_bold)
     draw.text((right_x + 280, ry), payment, fill=(0, 0, 0), font=font_norm)
+    ry += lh
 
-    y = max(ly, ry) + 40
+    y = max(ly, ry) + 30
 
     # Table Column Widths
     cw_part = int(content_w * 0.45)
