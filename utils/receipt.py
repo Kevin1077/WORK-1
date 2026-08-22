@@ -5,9 +5,28 @@ Black and white only — no colours.
 """
 import os
 import tempfile
+import logging
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+# --- Phase 0: Persistent file-based debug logging ---
+_LOG_PATH = os.path.join(tempfile.gettempdir(), "victory_print_debug.log")
+_logger = logging.getLogger("victory_print")
+if not _logger.handlers:
+    _handler = logging.FileHandler(_LOG_PATH, encoding="utf-8")
+    _handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s"
+    ))
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.DEBUG)
+
+_logger.info("=" * 60)
+_logger.info("receipt.py module loaded from: %s", os.path.abspath(__file__))
+try:
+    _logger.info("File last modified: %s", os.path.getmtime(__file__))
+except Exception:
+    pass
 
 SHOP_NAME = "Victory Laundry"
 SHOP_TAGLINE = "Professional Laundry Services"
@@ -561,10 +580,18 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
 
 def silent_print_image(image_path: str, printer_name: str = None,
                        margin_left_mm: float = None, margin_top_mm: float = None,
-                       scale_pct: float = None, copies: int = None) -> bool:
+                       scale_pct: float = None, copies: int = None,
+                       rotate_180: bool = None) -> bool:
     """Silently print an image file directly to a printer with size, scale, margin, and copy adjustments."""
+    import traceback
+
+    _logger.info("---- silent_print_image START ----")
+    _logger.info("build marker: DEBUG-BUILD-0007")
+    _logger.info("image_path=%s", image_path)
+
     is_barcode = "dispatch" in image_path.lower() or "slip" in image_path.lower()
     setting_pfx = "barcode" if is_barcode else "receipt"
+    _logger.info("is_barcode=%s setting_pfx=%s", is_barcode, setting_pfx)
 
     try:
         import database as db
@@ -578,11 +605,21 @@ def silent_print_image(image_path: str, printer_name: str = None,
             scale_pct = float(db.get_setting(f"{setting_pfx}_scale", "100"))
         if copies is None:
             copies = int(db.get_setting(f"{setting_pfx}_copies", "1"))
+        if rotate_180 is None:
+            raw_rot = db.get_setting(f"{setting_pfx}_rotate180", "0")
+            _logger.info("raw rotate180 setting from DB = %r", raw_rot)
+            rotate_180 = (raw_rot == "1")
     except Exception:
+        _logger.error("Failed reading settings from database:\n%s", traceback.format_exc())
         if margin_left_mm is None: margin_left_mm = 0
         if margin_top_mm is None: margin_top_mm = 0
         if scale_pct is None: scale_pct = 100
         if copies is None: copies = 1
+        if rotate_180 is None: rotate_180 = False
+
+    _logger.info("RESOLVED SETTINGS: printer_name=%r margin_left_mm=%s margin_top_mm=%s "
+                 "scale_pct=%s copies=%s rotate_180=%s",
+                 printer_name, margin_left_mm, margin_top_mm, scale_pct, copies, rotate_180)
 
     if os.name == "nt":
         # 1. Try Win32 GDI direct printer DC (100% silent, fully adjustable)
@@ -593,7 +630,37 @@ def silent_print_image(image_path: str, printer_name: str = None,
             from PIL import Image, ImageWin
 
             target_printer = printer_name or win32print.GetDefaultPrinter()
+            _logger.info("target_printer=%r", target_printer)
+
+            # Force portrait DEVMODE — log whether this actually succeeds.
+            try:
+                hprinter = win32print.OpenPrinter(target_printer)
+                try:
+                    props = win32print.GetPrinter(hprinter, 2)
+                    dm = props["pDevMode"]
+                    if dm is not None:
+                        before = dm.Orientation
+                        dm.Orientation = win32con.DMORIENT_PORTRAIT
+                        dm.Fields |= win32con.DM_ORIENTATION
+                        win32print.SetPrinter(hprinter, 2, props, 0)
+                        _logger.info("DEVMODE orientation changed: before=%s after=%s",
+                                     before, win32con.DMORIENT_PORTRAIT)
+                    else:
+                        _logger.warning("DEVMODE (pDevMode) was None — could not set orientation")
+                finally:
+                    win32print.ClosePrinter(hprinter)
+            except Exception:
+                _logger.error("DEVMODE force-portrait FAILED (likely permissions):\n%s",
+                              traceback.format_exc())
+
             img = Image.open(image_path)
+            _logger.info("Loaded image size=%s mode=%s dpi=%s", img.size, img.mode, img.info.get("dpi"))
+
+            if rotate_180:
+                img = img.rotate(180)
+                _logger.info("Applied img.rotate(180). New size=%s", img.size)
+            else:
+                _logger.info("rotate_180 is False — NOT rotating in software")
 
             hDC = win32ui.CreateDC()
             hDC.CreatePrinterDC(target_printer)
@@ -608,63 +675,68 @@ def silent_print_image(image_path: str, printer_name: str = None,
             phys_off_x = hDC.GetDeviceCaps(win32con.PHYSICALOFFSETX) or 0
             phys_off_y = hDC.GetDeviceCaps(win32con.PHYSICALOFFSETY) or 0
 
-            img_w, img_h = img.size
+            _logger.info("DC caps: printable_w=%s printable_h=%s dpi_x=%s dpi_y=%s "
+                         "phys_w=%s phys_h=%s phys_off_x=%s phys_off_y=%s",
+                         printable_w, printable_h, dpi_x, dpi_y,
+                         phys_w, phys_h, phys_off_x, phys_off_y)
 
-            # DPI of image (defaults to 300 for generated receipts/challans)
+            img_w, img_h = img.size
             img_dpi = img.info.get("dpi", (300, 300))[0] or 300
 
-            # Calculate physical dimensions in inches
             img_w_inches = img_w / float(img_dpi)
             img_h_inches = img_h / float(img_dpi)
             phys_w_inches = phys_w / float(dpi_x)
             phys_h_inches = phys_h / float(dpi_y)
 
-            # 1:1 scale target dimensions on printer paper
             if phys_w > 0 and abs(img_w_inches - phys_w_inches) < 0.35:
-                # Full page sheet match (e.g. A5 image printed on A5 paper sheet)
                 base_target_w = phys_w
                 base_target_h = phys_h
+                _logger.info("Using FULL PAGE SHEET MATCH branch")
             else:
-                # Scale based on physical inches to printer dots
                 base_target_w = int(img_w_inches * dpi_x)
                 base_target_h = int(img_h_inches * dpi_y)
-                # If image exceeds printable area (e.g. thermal roll or mismatch), constrain width
                 if base_target_w > printable_w:
                     base_scale = printable_w / float(base_target_w)
                     base_target_w = printable_w
                     base_target_h = int(base_target_h * base_scale)
+                _logger.info("Using SCALED-TO-PHYSICAL-INCHES branch")
 
-            # Apply custom scale_pct
             custom_scale = scale_pct / 100.0
             target_w = int(base_target_w * custom_scale)
             target_h = int(base_target_h * custom_scale)
 
-            # Convert user-configured margin offsets from mm to printer DC pixels
             user_off_x = int((margin_left_mm / 25.4) * dpi_x)
             user_off_y = int((margin_top_mm / 25.4) * dpi_y)
 
-            # Align top-left of image (0,0) with physical paper top-left (0,0) plus user margins
             x1 = user_off_x - phys_off_x
             y1 = user_off_y - phys_off_y
             x2 = x1 + target_w
             y2 = y1 + target_h
 
+            _logger.info("Final draw rect: x1=%s y1=%s x2=%s y2=%s (target_w=%s target_h=%s)",
+                         x1, y1, x2, y2, target_w, target_h)
+
             hDC.StartDoc(os.path.basename(image_path))
             dib = ImageWin.Dib(img)
 
-            for _ in range(max(1, copies)):
+            for i in range(max(1, copies)):
                 hDC.StartPage()
                 dib.draw(hDC.GetHandleOutput(), (x1, y1, x2, y2))
                 hDC.EndPage()
+                _logger.info("Printed copy %d/%d", i + 1, copies)
 
             hDC.EndDoc()
             hDC.DeleteDC()
+            _logger.info("GDI print path SUCCEEDED — returning True")
+            _logger.info("---- silent_print_image END ----")
             return True
         except Exception:
-            pass
+            _logger.error("GDI print path FAILED:\n%s", traceback.format_exc())
 
         # 2. Try PowerShell print
         try:
+            _logger.warning("Falling back to PowerShell print method (NOTE: this method "
+                            "prints the ORIGINAL file from disk and does NOT apply rotate_180)")
             import subprocess
             target_printer = printer_name or ""
             ps_cmd = (
@@ -673,22 +745,31 @@ def silent_print_image(image_path: str, printer_name: str = None,
                 + "-WindowStyle Hidden"
             )
             subprocess.run(["powershell", "-Command", ps_cmd], check=True, creationflags=0x08000000)
+            _logger.info("PowerShell print path SUCCEEDED — returning True")
             return True
         except Exception:
-            pass
+            _logger.error("PowerShell print path FAILED:\n%s", traceback.format_exc())
 
         # 3. Fallback ShellExecute
         try:
+            _logger.warning("Falling back to ShellExecute method (NOTE: this method "
+                            "prints the ORIGINAL file from disk and does NOT apply rotate_180)")
             import win32api
             if printer_name:
                 win32api.ShellExecute(0, "printto", image_path, f'"{printer_name}"', ".", 0)
             else:
                 win32api.ShellExecute(0, "print", image_path, None, ".", 0)
+            _logger.info("ShellExecute print path SUCCEEDED — returning True")
             return True
         except Exception:
+            _logger.error("ShellExecute print path FAILED:\n%s", traceback.format_exc())
             if hasattr(os, "startfile"):
                 os.startfile(image_path, "print")
+                _logger.info("os.startfile print fallback used — returning True")
                 return True
+
+    _logger.error("All print methods exhausted — returning False")
+    _logger.info("---- silent_print_image END ----")
     return False
 
 
