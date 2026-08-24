@@ -625,33 +625,13 @@ def silent_print_image(image_path: str, printer_name: str = None,
         # 1. Try Win32 GDI direct printer DC (100% silent, fully adjustable)
         try:
             import win32print
+            import win32gui
             import win32ui
             import win32con
             from PIL import Image, ImageWin
 
             target_printer = printer_name or win32print.GetDefaultPrinter()
             _logger.info("target_printer=%r", target_printer)
-
-            # Force portrait DEVMODE — log whether this actually succeeds.
-            try:
-                hprinter = win32print.OpenPrinter(target_printer)
-                try:
-                    props = win32print.GetPrinter(hprinter, 2)
-                    dm = props["pDevMode"]
-                    if dm is not None:
-                        before = dm.Orientation
-                        dm.Orientation = win32con.DMORIENT_PORTRAIT
-                        dm.Fields |= win32con.DM_ORIENTATION
-                        win32print.SetPrinter(hprinter, 2, props, 0)
-                        _logger.info("DEVMODE orientation changed: before=%s after=%s",
-                                     before, win32con.DMORIENT_PORTRAIT)
-                    else:
-                        _logger.warning("DEVMODE (pDevMode) was None — could not set orientation")
-                finally:
-                    win32print.ClosePrinter(hprinter)
-            except Exception:
-                _logger.error("DEVMODE force-portrait FAILED (likely permissions):\n%s",
-                              traceback.format_exc())
 
             img = Image.open(image_path)
             _logger.info("Loaded image size=%s mode=%s dpi=%s", img.size, img.mode, img.info.get("dpi"))
@@ -662,8 +642,57 @@ def silent_print_image(image_path: str, printer_name: str = None,
             else:
                 _logger.info("rotate_180 is False — NOT rotating in software")
 
-            hDC = win32ui.CreateDC()
-            hDC.CreatePrinterDC(target_printer)
+            # Determine paper size and orientation for in-memory per-job DEVMODE
+            hDC = None
+            try:
+                hprinter = win32print.OpenPrinter(target_printer)
+                try:
+                    props = win32print.GetPrinter(hprinter, 2)
+                    devmode = props.get("pDevMode")
+                    if devmode is not None:
+                        # Paper size detection
+                        paper_size_code = None
+                        try:
+                            import database as db
+                            psize = db.get_setting(f"{setting_pfx}_paper_size", "").upper()
+                        except Exception:
+                            psize = ""
+
+                        # Detect A5 or A4 if set or if image matches A5/A4 sheet size
+                        img_w, img_h = img.size
+                        aspect = img_h / float(img_w) if img_w > 0 else 1.0
+
+                        if "A5" in psize or (abs(aspect - 1.414) < 0.15 and max(img_w, img_h) >= 2000 and min(img_w, img_h) <= 1800):
+                            paper_size_code = win32con.DMPAPER_A5
+                            _logger.info("Configured DEVMODE for A5 paper (DMPAPER_A5)")
+                        elif "A4" in psize or (abs(aspect - 1.414) < 0.15 and min(img_w, img_h) > 2000):
+                            paper_size_code = win32con.DMPAPER_A4
+                            _logger.info("Configured DEVMODE for A4 paper (DMPAPER_A4)")
+                        elif "LETTER" in psize:
+                            paper_size_code = win32con.DMPAPER_LETTER
+                            _logger.info("Configured DEVMODE for Letter paper (DMPAPER_LETTER)")
+
+                        if paper_size_code is not None:
+                            devmode.PaperSize = paper_size_code
+                            devmode.Fields |= win32con.DM_PAPERSIZE
+
+                        devmode.Orientation = win32con.DMORIENT_PORTRAIT
+                        devmode.Fields |= win32con.DM_ORIENTATION
+
+                        # Create DC with custom in-memory DEVMODE
+                        hdc_handle = win32gui.CreateDC("WINSPOOL", target_printer, devmode)
+                        if hdc_handle:
+                            hDC = win32ui.CreateDCFromHandle(hdc_handle)
+                            _logger.info("Created DC with custom DEVMODE (Orientation=PORTRAIT, PaperSize=%s)", paper_size_code)
+                finally:
+                    win32print.ClosePrinter(hprinter)
+            except Exception:
+                _logger.warning("Custom DEVMODE setup failed, falling back to default printer DC:\n%s", traceback.format_exc())
+
+            if hDC is None:
+                hDC = win32ui.CreateDC()
+                hDC.CreatePrinterDC(target_printer)
+                _logger.info("Created standard printer DC")
 
             printable_w = hDC.GetDeviceCaps(win32con.HORZRES)
             printable_h = hDC.GetDeviceCaps(win32con.VERTRES)
@@ -688,7 +717,8 @@ def silent_print_image(image_path: str, printer_name: str = None,
             phys_w_inches = phys_w / float(dpi_x)
             phys_h_inches = phys_h / float(dpi_y)
 
-            if phys_w > 0 and abs(img_w_inches - phys_w_inches) < 0.35:
+            is_sheet_match = (phys_w > 0 and abs(img_w_inches - phys_w_inches) < 0.35)
+            if is_sheet_match:
                 base_target_w = phys_w
                 base_target_h = phys_h
                 _logger.info("Using FULL PAGE SHEET MATCH branch")
@@ -708,8 +738,13 @@ def silent_print_image(image_path: str, printer_name: str = None,
             user_off_x = int((margin_left_mm / 25.4) * dpi_x)
             user_off_y = int((margin_top_mm / 25.4) * dpi_y)
 
-            x1 = user_off_x - phys_off_x
-            y1 = user_off_y - phys_off_y
+            if is_sheet_match:
+                x1 = user_off_x - phys_off_x
+                y1 = user_off_y - phys_off_y
+            else:
+                x1 = user_off_x
+                y1 = user_off_y
+
             x2 = x1 + target_w
             y2 = y1 + target_h
 
@@ -1006,7 +1041,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
     y += 45
     draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
 
-    img.save(output_path, "PNG")
+    img.save(output_path, "PNG", dpi=(300, 300))
     return output_path
 
 
