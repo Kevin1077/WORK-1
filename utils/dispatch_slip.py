@@ -185,6 +185,21 @@ def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
     return output_path
 
 
+def _fit_image_text(draw, text: str, font, max_w: int) -> str:
+    """Return text truncated with '…' to fit within max_w pixels."""
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    if text_w <= max_w:
+        return text
+    while text:
+        candidate = text + "…"
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= max_w:
+            return candidate
+        text = text[:-1]
+    return "…"
+
+
 def generate_dispatch_slip_images(order_data: dict) -> list[str]:
     """Generate PNG images (one per garment) for direct GDI printing without opening PDF viewers."""
     from PIL import Image, ImageDraw, ImageFont
@@ -198,17 +213,6 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
     garment_counter = 0
     image_paths     = []
     code128_class   = barcode.get_barcode_class("code128")
-
-    try:
-        font_title = ImageFont.truetype("arialbd.ttf", 22)
-        font_bold  = ImageFont.truetype("arialbd.ttf", 22)
-        font_norm  = ImageFont.truetype("arial.ttf", 20)
-        font_code  = ImageFont.truetype("arialbd.ttf", 26)
-    except Exception:
-        font_title = ImageFont.load_default()
-        font_bold  = font_title
-        font_norm  = font_title
-        font_code  = font_title
 
     try:
         import database as db
@@ -225,6 +229,23 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
     else:
         # Default 35mm x 40mm
         w, h = 413, 472
+
+    scale = min(1.0, h / 450.0)
+    s_title = max(18, int(24 * scale))
+    s_bold  = max(22, int(28 * scale))
+    s_code  = max(22, int(28 * scale))
+    s_rmk   = max(18, int(24 * scale))
+
+    try:
+        font_title = ImageFont.truetype("arialbd.ttf", s_title)
+        font_bold  = ImageFont.truetype("arialbd.ttf", s_bold)
+        font_norm  = ImageFont.truetype("arialbd.ttf", s_rmk)
+        font_code  = ImageFont.truetype("arialbd.ttf", s_code)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_bold  = font_title
+        font_norm  = font_title
+        font_code  = font_title
 
     for item in items:
         cloth_type = item.get("cloth_type", "Garment")
@@ -243,8 +264,10 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             draw = ImageDraw.Draw(img)
 
             # Header
-            draw.text((w // 2, 20), BRANCH_NAME, fill=(0, 0, 0), font=font_title, anchor="mm")
-            draw.line([(20, 36), (w - 20, 36)], fill=(0, 0, 0), width=2)
+            pad_top = int(22 * scale)
+            draw.text((w // 2, pad_top), BRANCH_NAME, fill=(0, 0, 0), font=font_title, anchor="mm")
+            line1_y = pad_top + int(16 * scale)
+            draw.line([(25, line1_y), (w - 25, line1_y)], fill=(0, 0, 0), width=2)
 
             # Barcode
             rv = io.BytesIO()
@@ -254,25 +277,36 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             bc_img = Image.open(rv)
 
             target_bc_w = w - 60
-            target_bc_h = 110
+            target_bc_h = int(105 * scale)
             bc_resized = bc_img.resize((target_bc_w, target_bc_h), Image.Resampling.LANCZOS)
-            img.paste(bc_resized, (30, 46))
+            bc_y = line1_y + int(8 * scale)
+            img.paste(bc_resized, ((w - target_bc_w) // 2, bc_y))
 
             # Ref Code
-            draw.text((w // 2, 172), ref_code, fill=(0, 0, 0), font=font_code, anchor="mm")
-            draw.line([(20, 192), (w - 20, 192)], fill=(0, 0, 0), width=2)
+            ref_y = bc_y + target_bc_h + int(16 * scale)
+            draw.text((w // 2, ref_y), ref_code, fill=(0, 0, 0), font=font_code, anchor="mm")
+            line2_y = ref_y + int(18 * scale)
+            draw.line([(25, line2_y), (w - 25, line2_y)], fill=(0, 0, 0), width=2)
 
             # Details
-            y_pos = 208
-            draw.text((25, y_pos), f"Cust: {cust_name[:18]}", fill=(0, 0, 0), font=font_bold)
-            y_pos += 32
-            draw.text((25, y_pos), f"Item: {item_desc[:18]}", fill=(0, 0, 0), font=font_bold)
+            margin_x = 30
+            max_text_w = w - (2 * margin_x)
+            y_pos = line2_y + int(14 * scale)
+
+            cust_line = _fit_image_text(draw, f"Cust: {cust_name}", font_bold, max_text_w)
+            draw.text((margin_x, y_pos), cust_line, fill=(0, 0, 0), font=font_bold)
+            y_pos += int(36 * scale)
+
+            item_line = _fit_image_text(draw, f"Item: {item_desc}", font_bold, max_text_w)
+            draw.text((margin_x, y_pos), item_line, fill=(0, 0, 0), font=font_bold)
+
             if notes_text:
-                y_pos += 32
-                draw.text((25, y_pos), f"Rmk: {notes_text[:18]}", fill=(0, 0, 0), font=font_norm)
+                y_pos += int(32 * scale)
+                rmk_line = _fit_image_text(draw, f"Rmk: {notes_text}", font_norm, max_text_w)
+                draw.text((margin_x, y_pos), rmk_line, fill=(0, 0, 0), font=font_norm)
 
             out_file = os.path.join(tempfile.gettempdir(), f"victory_dispatch_slip_order_{order_id}_{garment_counter}.png")
-            img.save(out_file, "PNG")
+            img.save(out_file, "PNG", dpi=(300, 300))
             image_paths.append(out_file)
 
     return image_paths

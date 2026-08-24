@@ -742,7 +742,11 @@ def silent_print_image(image_path: str, printer_name: str = None,
                 x1 = user_off_x - phys_off_x
                 y1 = user_off_y - phys_off_y
             else:
-                x1 = user_off_x
+                if is_barcode and printable_w > target_w:
+                    center_offset_x = (printable_w - target_w) // 2
+                    x1 = max(0, center_offset_x + user_off_x - phys_off_x)
+                else:
+                    x1 = user_off_x
                 y1 = user_off_y
 
             x2 = x1 + target_w
