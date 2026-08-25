@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -> str:
     """
-    Generate an A5 PNG receipt image matching Victory Laundry pre-printed paper template.
+    Generate an A5 PNG receipt image matching ÉTOFFE LAUNDRY STUDIO pre-printed paper template.
     Leaves 5.7 cm top margin for pre-printed letterhead.
     """
     if output_path is None:
@@ -177,7 +177,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
 
     # Footer
     y += 60
-    draw.text((ml + content_w, y), "For Victory Laundry", fill=(0, 0, 0), font=font_bold, anchor="rt")
+    draw.text((ml + content_w, y), "For ÉTOFFE LAUNDRY STUDIO", fill=(0, 0, 0), font=font_bold, anchor="rt")
     y += 45
     draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
 

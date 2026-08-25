@@ -1,5 +1,5 @@
 """
-utils/dispatch_slip.py — PDF dispatch slip generator for Victory Drycleaners
+utils/dispatch_slip.py — PDF dispatch slip generator for ÉTOFFE LAUNDRY STUDIO
 
 Label: 3.5cm wide × 4cm tall  →  PORTRAIT  (35mm × 40mm)
 PDF page matches label exactly. All content is drawn at absolute coordinates
@@ -49,7 +49,7 @@ def _draw_slip(c: canvas.Canvas,
     Coordinate origin = bottom-left, y increases upward.
 
     Portrait layout (* denotes centred):
-        *  Victory Drycleaners - Pala
+        *  ÉTOFFE LAUNDRY STUDIO
         ──────────────────────────────
         *        [BARCODE]
         *      P{id}-{n}

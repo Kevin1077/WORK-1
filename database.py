@@ -1,5 +1,5 @@
 """
-database.py — SQLite data layer for Victory Laundry Management System
+database.py — SQLite data layer for ÉTOFFE LAUNDRY STUDIO Management System
 """
 import sqlite3
 import os

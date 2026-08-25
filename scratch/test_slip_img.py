@@ -21,7 +21,7 @@ def create_slip_image(ref_code: str, cust_name: str, item_desc: str, notes_text:
         font_code = font_title
 
     # Header
-    draw.text((w // 2, 20), "Victory Drycleaners - Pala", fill=(0, 0, 0), font=font_title, anchor="mm")
+    draw.text((w // 2, 20), "ÉTOFFE LAUNDRY STUDIO", fill=(0, 0, 0), font=font_title, anchor="mm")
     draw.line([(20, 36), (w - 20, 36)], fill=(0, 0, 0), width=2)
 
     # Barcode

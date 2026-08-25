@@ -23,7 +23,7 @@ page = _get_page()
 _ensure_logged_in(page)
 
 print("3. Navigating to chat...")
-caption = f"Hello {order_data['name']},\n\nHere is your receipt for Order #{order_data['order_id']}.\n\nThank you for choosing Victory Laundry!"
+caption = f"Hello {order_data['name']},\n\nHere is your receipt for Order #{order_data['order_id']}.\n\nThank you for choosing ÉTOFFE LAUNDRY STUDIO!"
 _open_chat_url(page, '9876543210', caption)
 
 print("4. Executing _attach_image()...")

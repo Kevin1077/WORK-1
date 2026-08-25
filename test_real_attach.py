@@ -23,7 +23,7 @@ receipt_path = _validate_image(img_path)
 print(f"Receipt PNG created at: {receipt_path}")
 
 print("2. Calling send_receipt() to open WhatsApp Web and attach receipt...")
-caption = f"Hello {order_data['name']},\n\nHere is your receipt for Order #{order_data['order_id']}.\n\nThank you for choosing Victory Laundry!"
+caption = f"Hello {order_data['name']},\n\nHere is your receipt for Order #{order_data['order_id']}.\n\nThank you for choosing ÉTOFFE LAUNDRY STUDIO!"
 
 # We call send_receipt which navigates and attaches
 send_receipt('9876543210', str(receipt_path), caption)

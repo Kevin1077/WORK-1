@@ -1,5 +1,5 @@
 """
-utils/receipt.py — PNG image receipt generator for Victory Laundry
+utils/receipt.py — PNG image receipt generator for ÉTOFFE LAUNDRY STUDIO
 Uses Pillow (PIL) to create a clean, receipt-style PNG image.
 Black and white only — no colours.
 """
@@ -28,7 +28,7 @@ try:
 except Exception:
     pass
 
-SHOP_NAME = "Victory Laundry"
+SHOP_NAME = "ÉTOFFE LAUNDRY STUDIO"
 SHOP_TAGLINE = "Professional Laundry Services"
 
 
@@ -292,7 +292,7 @@ def _build_receipt_image(order_data: dict) -> Image.Image:
     draw.rectangle([margin, y, margin + content_width, y + 2], fill=fg_color)
     y += 14
 
-    footer_text = "Thank you for choosing Victory Laundry!"
+    footer_text = "Thank you for choosing ÉTOFFE LAUNDRY STUDIO!"
     tw = _get_text_width(draw, footer_text, font_footer)
     draw.text(((img_width - tw) // 2, y), footer_text, fill=fg_color, font=font_footer)
 
@@ -643,7 +643,7 @@ def generate_whatsapp_receipt(order_data: dict, output_path: str = None) -> str:
 
 def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> str:
     """
-    Generate an A5 PDF dispatch challan matching the Victory Laundry paper template.
+    Generate an A5 PDF dispatch challan matching the ÉTOFFE LAUNDRY STUDIO paper template.
 
     Layout (below the 5.7 cm pre-printed letterhead zone):
       ┌─────────────────────────────┬──────────────────────┐
@@ -659,7 +659,7 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
       │ Saree DC    │ P42-3   │ silk care │        80.00  │
       ├─────────────┴──────────┴───────────┼───────────────┤
       │ TOTAL                        <cnt> │       120.00  │
-      │                      For Victory Laundry           │
+      │                      For ÉTOFFE LAUNDRY STUDIO     │
       │                      Authorised Signatory          │
       └────────────────────────────────────────────────────┘
 
@@ -895,7 +895,7 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
     # ── Footer: right-aligned, two lines ──────────────────────────────────────
     y -= 5 * mm
     c.setFont(F_BOLD, S_NORM)
-    c.drawRightString(ML + CONTENT_W, y, "For Victory Laundry")
+    c.drawRightString(ML + CONTENT_W, y, "For ÉTOFFE LAUNDRY STUDIO")
     y -= LH + 1 * mm
     c.setFont(F_ITALIC, S_NORM)
     c.drawRightString(ML + CONTENT_W, y, "Authorised Signatory")
@@ -1191,7 +1191,7 @@ def silent_print_pdf(pdf_path: str, printer_name: str = None) -> bool:
 
 def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -> str:
     """
-    Generate an A5 PNG receipt image matching Victory Laundry pre-printed paper template.
+    Generate an A5 PNG receipt image matching ÉTOFFE LAUNDRY STUDIO pre-printed paper template.
     Leaves 5.7 cm top margin for pre-printed letterhead.
     """
     from datetime import datetime
@@ -1508,7 +1508,7 @@ def send_whatsapp_ready_notification(order_data: dict, parent_window=None) -> bo
     customer = order_data.get("name") or "Customer"
     message = (
         f"Hello {customer},\n\n"
-        f"Your Victory Laundry order #{order_data['order_id']} is ready. "
+        f"Your ÉTOFFE LAUNDRY STUDIO order #{order_data['order_id']} is ready. "
         "Please contact us to arrange pickup/delivery.\n\n"
         "Thank you!"
     )

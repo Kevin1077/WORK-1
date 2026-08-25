@@ -1,5 +1,5 @@
 """
-utils/report_pdf.py — Date-range report PDF generator for Victory Laundry
+utils/report_pdf.py — Date-range report PDF generator for ÉTOFFE LAUNDRY STUDIO
 Creates an A4 landscape PDF with an Excel-like table of orders.
 """
 import os
@@ -51,7 +51,7 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
     story = []
 
     # Title
-    story.append(Paragraph("Victory Laundry — Order Report", title_style))
+    story.append(Paragraph("ÉTOFFE LAUNDRY STUDIO — Order Report", title_style))
 
     # Date range display
     try:
@@ -167,7 +167,7 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
     )
 
     story = []
-    story.append(Paragraph("Victory Laundry — Search Results", title_style))
+    story.append(Paragraph("ÉTOFFE LAUNDRY STUDIO — Search Results", title_style))
     now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
     story.append(Paragraph(f"Search: {query_desc}    |    Generated: {now}", subtitle_style))
     story.append(Spacer(1, 4 * mm))

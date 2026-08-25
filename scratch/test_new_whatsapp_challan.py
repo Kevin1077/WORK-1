@@ -211,7 +211,7 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
 
     # Footer section
     y += int(28 * scale) # gap before footer
-    y += int(20 * scale) # For Victory Laundry
+    y += int(20 * scale) # For ÉTOFFE LAUNDRY STUDIO
     y += int(20 * scale) # Authorised Signatory
     y += int(24 * scale) # Bottom padding
 
@@ -334,7 +334,7 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
 
     # 4. Footer Section
     y += int(28 * scale)
-    draw.text((margin + content_w, y), "For Victory Laundry", fill=fg_color, font=font_bold, anchor="rt")
+    draw.text((margin + content_w, y), "For ÉTOFFE LAUNDRY STUDIO", fill=fg_color, font=font_bold, anchor="rt")
     y += int(20 * scale)
     draw.text((margin + content_w, y), "Authorised Signatory", fill=fg_color, font=font_italic, anchor="rt")
 
