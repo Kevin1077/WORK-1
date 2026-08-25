@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
-BRANCH_NAME = "Victory Drycleaners - Pala"
+BRANCH_NAME = "ÉTOFFE LAUNDRY STUDIO"
 
 # ── Label: 3.5 cm wide × 4 cm tall (portrait) ────────────────────────────────
 PAGE_W = 43.8 * mm    # 3.5 cm  ← width
