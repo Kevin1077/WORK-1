@@ -96,29 +96,18 @@ def _draw_slip(c: canvas.Canvas,
     c.line(left, y, PAGE_W - left, y)
 
     # Text fields ─────────────────────────────────────────────────────────
-    FB, FV, ST = "Helvetica-Bold", "Helvetica-Bold", 10
-    pfx_w = stringWidth("Rmk:  ", FB, ST)
-    val_w = USABLE - pfx_w
+    FV, ST = "Helvetica-Bold", 10
 
-    def row(label: str, value: str, italic: bool = False) -> None:
+    def row(value: str) -> None:
         nonlocal y
-        vfont = "Helvetica-BoldOblique" if italic else FV
         y -= 3.2 * mm
         if y < MARGIN:          # safety: stop if we'd go below bottom margin
             return
-        if label:
-            c.setFont(FB, ST)
-            c.drawString(left, y, label)
-            c.setFont(vfont, ST)
-            c.drawString(left + pfx_w, y, _fit(value, vfont, ST, val_w))
-        else:
-            c.setFont(vfont, ST)
-            c.drawString(left, y, _fit(value, vfont, ST, USABLE))
+        c.setFont(FV, ST)
+        c.drawString(left, y, _fit(value, FV, ST, USABLE))
 
-    row("", cust_name)
-    row("", item_desc)
-    if notes_text:
-        row("Rmk:  ", notes_text, italic=True)
+    row(cust_name)
+    row(item_desc)
 
 
 def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
@@ -303,11 +292,6 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
 
             item_line = _fit_image_text(draw, item_desc, font_bold, max_text_w)
             draw.text((margin_x, y_pos), item_line, fill=(0, 0, 0), font=font_bold)
-
-            if notes_text:
-                y_pos += int(32 * scale)
-                rmk_line = _fit_image_text(draw, f"Rmk: {notes_text}", font_norm, max_text_w)
-                draw.text((margin_x, y_pos), rmk_line, fill=(0, 0, 0), font=font_norm)
 
             out_file = os.path.join(tempfile.gettempdir(), f"victory_dispatch_slip_order_{order_id}_{garment_counter}.png")
             img.save(out_file, "PNG", dpi=(300, 300))
