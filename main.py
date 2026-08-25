@@ -1,5 +1,5 @@
 """
-main.py — Entry point for Victory Laundry Management System
+main.py — Entry point for Étoffe Laundry Management System
 """
 import sys
 import os

@@ -315,6 +315,332 @@ def generate_receipt(order_data: dict, output_path: str = None) -> str:
     return output_path
 
 
+def _draw_dashed_line(draw: ImageDraw.ImageDraw, x0: int, x1: int, y: int, color=(140, 140, 140), dash_len=5, space_len=4, width=1):
+    """Draw a subtle horizontal dashed line."""
+    cur_x = x0
+    while cur_x < x1:
+        end_x = min(cur_x + dash_len, x1)
+        draw.line([(cur_x, y), (end_x, y)], fill=color, width=width)
+        cur_x += dash_len + space_len
+
+
+def _draw_vector_heart(draw: ImageDraw.ImageDraw, cx: float, cy: float, size: float = 14, outline=(184, 134, 27), fill=None, width: int = 2):
+    """Draw a vector heart motif centered at (cx, cy)."""
+    import math
+    scale = size / 32.0
+    points = []
+    for deg in range(0, 360, 6):
+        t = math.radians(deg)
+        x = 16 * (math.sin(t) ** 3)
+        y = -(13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t))
+        points.append((cx + x * scale, cy + y * scale))
+    draw.polygon(points, fill=fill, outline=outline, width=width)
+
+
+def _draw_gold_divider_with_heart(draw: ImageDraw.ImageDraw, x0: int, x1: int, y: int, color=(184, 134, 27), size: int = 15):
+    """Draw a gold accent horizontal divider with a centered vector heart motif."""
+    mid_x = (x0 + x1) // 2
+    gap = size + 16
+    draw.line([(x0, y), (mid_x - gap // 2, y)], fill=color, width=2)
+    draw.line([(mid_x + gap // 2, y), (x1, y)], fill=color, width=2)
+    _draw_vector_heart(draw, mid_x, y, size=size, outline=color, fill=None, width=2)
+
+
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
+    """Wrap text to fit within max_width pixels."""
+    words = text.split()
+    if not words:
+        return [""]
+    lines = []
+    current_line = []
+    for word in words:
+        test_line = " ".join(current_line + [word])
+        if _get_text_width(draw, test_line, font) <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+            else:
+                lines.append(word)
+                current_line = []
+    if current_line:
+        lines.append(" ".join(current_line))
+    return lines
+
+
+def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
+    """
+    Build and return an A5 (1754x2480 px @ 300 DPI) PIL Image of the WhatsApp receipt.
+    Uses the exact same canvas dimensions, margins, font sizes, table structure,
+    and footer as generate_dispatch_challan_image, with a digital header (Étoffe logo
+    and shop address) in the top 0-673px zone.
+    """
+    from datetime import datetime
+
+    # A5 size at 300 DPI: 1754 x 2480 pixels
+    w, h = 1754, 2480
+    img = Image.new("RGB", (w, h), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # Margins & top offset (matching generate_dispatch_challan_image)
+    ml = 118          # 10 mm left margin
+    mr = 94           # 8 mm right margin
+    content_w = w - ml - mr  # 1542 px
+
+    try:
+        font_bold   = ImageFont.truetype("arialbd.ttf", 32)
+        font_norm   = ImageFont.truetype("arial.ttf", 30)
+        font_sm     = ImageFont.truetype("arial.ttf", 26)
+        font_hdr    = ImageFont.truetype("arialbd.ttf", 32)
+        font_italic = ImageFont.truetype("ariali.ttf", 28)
+        font_addr   = ImageFont.truetype("arial.ttf", 39)
+    except Exception:
+        font_bold   = _get_font(32, bold=True)
+        font_norm   = _get_font(30)
+        font_sm     = _get_font(26)
+        font_hdr    = _get_font(32, bold=True)
+        font_italic = _get_font(28, italic=True)
+        font_addr   = _get_font(39)
+
+    # ── 1. Digital Header (in top 0–673px zone) ──────────────────────────────
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logo_candidates = [
+        os.path.join(base_dir, "assets", "etoffe_logo_color_transparent.png"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "etoffe_logo_color_transparent.png"),
+        os.path.join("assets", "etoffe_logo_color_transparent.png"),
+        os.path.abspath("assets/etoffe_logo_color_transparent.png"),
+    ]
+    logo_img = None
+    for cand in logo_candidates:
+        if cand and os.path.exists(cand):
+            try:
+                logo_img = Image.open(cand).convert("RGBA")
+                break
+            except Exception:
+                pass
+
+    header_top = 80
+    header_bottom = 600
+    header_mid = (header_top + header_bottom) // 2
+
+    # Split header into two equal halves for mirror symmetry
+    left_half_mid = ml + (content_w // 4)        # Midpoint of left half
+    right_half_mid = ml + 3 * (content_w // 4)    # Midpoint of right half
+
+    target_logo_w = 660
+    logo_badge_center_y = header_mid + 185  # fallback if logo image is missing
+    if logo_img:
+        ratio = target_logo_w / logo_img.width
+        target_logo_h = int(logo_img.height * ratio)
+        max_logo_h = 490
+        if target_logo_h > max_logo_h:
+            ratio = max_logo_h / logo_img.height
+            target_logo_h = max_logo_h
+            target_logo_w = int(logo_img.width * ratio)
+        logo_resized = logo_img.resize((target_logo_w, target_logo_h), Image.Resampling.LANCZOS)
+        logo_x = left_half_mid - (target_logo_w // 2)
+        logo_y = header_mid - (target_logo_h // 2)
+        img.paste(logo_resized, (logo_x, logo_y), mask=logo_resized.split()[3])
+
+        # Vertical center of the "DRY CLEAN | LAUNDRY" badge
+        # In the original 1024x725 asset, the badge spans rows 619 to 680 (center ~649.5)
+        badge_top_orig, badge_bottom_orig = 619, 680
+        logo_badge_center_y = logo_y + int(((badge_top_orig + badge_bottom_orig) / 2) * ratio)
+    else:
+        f_brand = _get_font(42, bold=True)
+        draw.text((left_half_mid, header_mid - 25), "ÉTOFFE LAUNDRY", fill=(0, 0, 0), font=f_brand, anchor="mt")
+
+    # Address block: 4 lines, horizontally centered in the right half.
+    # The 4th line ("Mob:9846593957") aligns vertically with the "DRY CLEAN | LAUNDRY" badge.
+    addr_lines = [
+        "Opp.St.Marys Church Lalam(Old)",
+        "Bypass Road",
+        "PALA",
+        "Mob:9846593957",
+    ]
+
+    cx_addr = right_half_mid
+    addr_lh = 60
+    n = len(addr_lines)
+
+    for i, line in enumerate(addr_lines):
+        line_center_y = logo_badge_center_y - (n - 1 - i) * addr_lh
+        draw.text((cx_addr, line_center_y), line, fill=(0, 0, 0), font=font_addr, anchor="mm")
+
+    # Thin horizontal rule at the bottom of header zone
+    draw.line([(ml, 630), (ml + content_w, 630)], fill=(0, 0, 0), width=2)
+
+    # ── 2. Content below 673px (matches generate_dispatch_challan_image) ─────
+    y = 673
+
+    def _fmt_date_dots(iso: str) -> str:
+        try:
+            if " " in str(iso):
+                iso = str(iso).split(" ")[0]
+            return datetime.strptime(str(iso), "%Y-%m-%d").strftime("%d.%m.%Y")
+        except Exception:
+            return str(iso) if iso else ""
+
+    def _strip_country_code(phone: str) -> str:
+        raw = str(phone or "").strip()
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if raw.startswith(("00", "+0")) and len(digits) > 10:
+            digits = digits[2:]
+        if len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        return digits if digits else raw
+
+    order_id   = order_data.get("order_id", "")
+    cust_name  = order_data.get("name", "")
+    cust_phone = _strip_country_code(order_data.get("phone", ""))
+    cust_place = (order_data.get("place") or "").strip()
+    cust_addr  = (order_data.get("address") or "").strip()
+    payment    = (order_data.get("payment_method") or "").strip()
+    order_date = _fmt_date_dots(order_data.get("order_date", ""))
+
+    # Header Two Columns
+    left_w = int(content_w * 0.62)
+    right_x = ml + left_w + 48
+    lh = 48  # line height
+
+    # Left Column
+    ly = y
+    draw.text((ml, ly), "To    :", fill=(0, 0, 0), font=font_bold)
+    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_bold)
+    ly += lh
+
+    cust_addr_lines = []
+    if cust_place:
+        cust_addr_lines.append(cust_place)
+    if cust_addr:
+        for part in cust_addr.replace("\n", ",").split(","):
+            part = part.strip()
+            if part:
+                cust_addr_lines.append(part)
+
+    if cust_addr_lines:
+        draw.text((ml + 120, ly), ", " + cust_addr_lines[0], fill=(0, 0, 0), font=font_norm)
+        ly += lh
+        for frag in cust_addr_lines[1:]:
+            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_norm)
+            ly += lh
+
+    draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)
+    draw.text((ml + 120, ly), cust_phone, fill=(0, 0, 0), font=font_norm)
+    ly += lh
+
+    # Right Column
+    ry = y
+    draw.text((right_x, ry), "No.   :", fill=(0, 0, 0), font=font_bold)
+    draw.text((right_x + 100, ry), f"P{order_id}", fill=(0, 0, 0), font=font_norm)
+    ry += lh
+
+    draw.text((right_x, ry), "Date  :", fill=(0, 0, 0), font=font_bold)
+    draw.text((right_x + 100, ry), order_date, fill=(0, 0, 0), font=font_norm)
+    ry += lh
+
+    draw.text((right_x, ry), "Mode of Payment:", fill=(0, 0, 0), font=font_bold)
+    draw.text((right_x + 280, ry), payment, fill=(0, 0, 0), font=font_norm)
+    ry += lh
+
+    y = max(ly, ry) + 30
+
+    # Table Column Widths
+    cw_part = int(content_w * 0.45)
+    cw_bar  = int(content_w * 0.20)
+    cw_rem  = int(content_w * 0.20)
+    cw_amt  = int(content_w * 0.15)
+
+    col_x = [ml, ml + cw_part, ml + cw_part + cw_bar, ml + cw_part + cw_bar + cw_rem]
+
+    hdr_h = 60
+    row_h = 52
+
+    tbl_top = y
+
+    # Header Row Box
+    draw.rectangle([ml, y, ml + content_w, y + hdr_h], outline=(0, 0, 0), width=2)
+    draw.text((col_x[0] + 15, y + 12), "Particulars", fill=(0, 0, 0), font=font_hdr)
+    draw.text((col_x[1] + cw_bar // 2, y + 12), "Barcode", fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    draw.text((col_x[2] + cw_rem // 2, y + 12), "Remark", fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    draw.text((col_x[3] + cw_amt - 15, y + 12), "Amount", fill=(0, 0, 0), font=font_hdr, anchor="rt")
+    y += hdr_h
+
+    # Data Rows
+    items = order_data.get("items", [])
+    garment_counter = 1
+    total_garments = 0
+
+    for item in items:
+        cloth_type  = str(item.get("cloth_type", ""))
+        qty         = max(1, int(item.get("quantity", 1)))
+        rate        = float(item.get("price_per_unit", 0))
+        item_notes  = (item.get("item_notes") or "").strip()
+        particulars = cloth_type + " DC" if not cloth_type.endswith(" DC") else cloth_type
+
+        for _ in range(qty):
+            barcode_str = f"P{order_id}-{garment_counter}"
+            text_y = y + 10
+
+            draw.text((col_x[0] + 15, text_y), particulars, fill=(0, 0, 0), font=font_norm)
+            draw.text((col_x[1] + cw_bar // 2, text_y), barcode_str, fill=(0, 0, 0), font=font_norm, anchor="mt")
+            if item_notes:
+                draw.text((col_x[2] + cw_rem // 2, text_y), item_notes, fill=(0, 0, 0), font=font_norm, anchor="mt")
+            draw.text((col_x[3] + cw_amt - 15, text_y), f"{rate:.2f}", fill=(0, 0, 0), font=font_norm, anchor="rt")
+
+            y += row_h
+            garment_counter += 1
+
+    total_garments = garment_counter - 1
+
+    # Divider line
+    draw.line([(ml, y), (ml + content_w, y)], fill=(0, 0, 0), width=2)
+    y += 10
+
+    # TOTAL row
+    total_h = 60
+    total_val = f"{float(order_data.get('total_amount', 0)):.2f}"
+    text_y = y + 12
+
+    draw.text((col_x[0] + 15, text_y), "TOTAL", fill=(0, 0, 0), font=font_hdr)
+    draw.text((col_x[1] + cw_bar // 2, text_y), str(total_garments), fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    draw.text((col_x[3] + cw_amt - 15, text_y), total_val, fill=(0, 0, 0), font=font_hdr, anchor="rt")
+    y += total_h
+
+    tbl_bottom = y
+
+    # Outer border + Column dividers
+    draw.rectangle([ml, tbl_top, ml + content_w, tbl_bottom], outline=(0, 0, 0), width=3)
+    for cx in col_x[1:]:
+        draw.line([(cx, tbl_top), (cx, tbl_bottom)], fill=(0, 0, 0), width=2)
+
+    # Footer
+    y += 60
+    draw.text((ml + content_w, y), "For ÉTOFFE LAUNDRY STUDIO", fill=(0, 0, 0), font=font_bold, anchor="rt")
+    y += 45
+    draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
+
+    return img
+
+
+def generate_whatsapp_receipt(order_data: dict, output_path: str = None) -> str:
+    """
+    Generate an A5 PNG receipt image matching dispatch challan layout with Étoffe digital header
+    specifically for WhatsApp sharing.
+    Returns the path to the generated PNG image.
+    """
+    if output_path is None:
+        tmp = tempfile.gettempdir()
+        output_path = os.path.join(
+            tmp, f"etoffe_whatsapp_receipt_order_{order_data['order_id']}.png"
+        )
+
+    img = _build_whatsapp_receipt_image(order_data)
+    img.save(output_path, "PNG", dpi=(300, 300))
+    return output_path
+
+
 def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> str:
     """
     Generate an A5 PDF dispatch challan matching the Victory Laundry paper template.
@@ -1041,7 +1367,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
 
     # Footer
     y += 60
-    draw.text((ml + content_w, y), "For Victory Laundry", fill=(0, 0, 0), font=font_bold, anchor="rt")
+    draw.text((ml + content_w, y), "For ÉTOFFE LAUNDRY STUDIO", fill=(0, 0, 0), font=font_bold, anchor="rt")
     y += 45
     draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
 
@@ -1153,9 +1479,8 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
         )
         return None
 
-    # Reuse the application's established receipt generator; no separate image
-    # layout or WhatsApp-specific receipt is created.
-    image_path = generate_receipt(order_data)
+    # Generate WhatsApp-specific receipt with branded Étoffe header design
+    image_path = generate_whatsapp_receipt(order_data)
 
     # 3. Format simplified receipt message (detailed breakdown is in the image)
     customer_name = order_data.get("name") or "Customer"
@@ -1163,7 +1488,7 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
     caption = (
         f"Hello {customer_name},\n\n"
         f"Here is your receipt for Order #{order_id}.\n\n"
-        f"Thank you for choosing Victory Laundry😊"
+        f"Thank you for choosing ÉTOFFE LAUNDRY STUDIO 😊"
     )
 
     _open_whatsapp_receipt_manual(digits, caption, image_path, parent_window)

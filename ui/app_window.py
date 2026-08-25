@@ -1,11 +1,14 @@
 """
 ui/app_window.py — Main application window with sidebar navigation
+Branded with Étoffe Laundry Studio logo and warm off-white palette.
 """
+import os
 import tkinter as tk
 from tkinter import ttk
 from datetime import datetime
+from PIL import Image, ImageTk
 
-from ui.theme import COLORS, FONTS, SHOP_NAME
+from ui.theme import COLORS, FONTS, SHOP_NAME, SHOP_TAGLINE
 
 
 class AppWindow:
@@ -21,7 +24,7 @@ class AppWindow:
     # ── Window setup ──────────────────────────────────────────────────────────
 
     def _setup_window(self):
-        self.root.title(f"{SHOP_NAME} — Management System")
+        self.root.title("Étoffe Laundry — Management System")
         self.root.geometry("1300x800")
         self.root.minsize(1100, 680)
         self.root.configure(bg=COLORS["bg"])
@@ -38,7 +41,7 @@ class AppWindow:
         style = ttk.Style()
         style.theme_use("clam")
 
-        # Treeview — dark rows, white text, orange selection
+        # Treeview — clean white / cream rows, charcoal text, gold selection
         style.configure("Treeview",
             background=COLORS["table_row"],
             foreground=COLORS["text"],
@@ -49,41 +52,42 @@ class AppWindow:
         )
         style.configure("Treeview.Heading",
             background=COLORS["table_header"],
-            foreground=COLORS["text"],
+            foreground=COLORS["table_header_fg"],
             font=FONTS["bold"],
             relief="flat",
-            borderwidth=0,
+            borderwidth=1,
         )
         style.map("Treeview",
             background=[("selected", COLORS["table_sel_bg"])],
             foreground=[("selected", COLORS["table_sel_fg"])],
         )
         style.map("Treeview.Heading",
-            background=[("active", COLORS["card_bg"])],
+            background=[("active", COLORS["border"])],
+            foreground=[("active", COLORS["text"])],
         )
 
-        # Scrollbar — dark themed
+        # Scrollbar — off-white themed
         style.configure("Vertical.TScrollbar",
-            background=COLORS["border2"],
-            troughcolor=COLORS["card_bg"],
+            background=COLORS["border"],
+            troughcolor=COLORS["bg"],
             arrowcolor=COLORS["text_dim"],
             borderwidth=0,
         )
         style.configure("Horizontal.TScrollbar",
-            background=COLORS["border2"],
-            troughcolor=COLORS["card_bg"],
+            background=COLORS["border"],
+            troughcolor=COLORS["bg"],
             borderwidth=0,
         )
 
-        # Combobox — dark themed
+        # Combobox — off-white themed
         style.configure("TCombobox",
             fieldbackground=COLORS["input_bg"],
             background=COLORS["input_bg"],
             foreground=COLORS["text"],
             arrowcolor=COLORS["text_dim"],
-            bordercolor=COLORS["border2"],
-            lightcolor=COLORS["border2"],
-            darkcolor=COLORS["border2"],
+            bordercolor=COLORS["border"],
+            lightcolor=COLORS["border"],
+            darkcolor=COLORS["border"],
         )
         style.map("TCombobox",
             fieldbackground=[("readonly", COLORS["input_bg"])],
@@ -93,27 +97,31 @@ class AppWindow:
         # Notebook
         style.configure("TNotebook", background=COLORS["bg"])
         style.configure("TNotebook.Tab",
-            background=COLORS["card_bg"],
+            background=COLORS["card_bg2"],
             foreground=COLORS["text_dim"],
             padding=[12, 6],
+        )
+        style.map("TNotebook.Tab",
+            background=[("selected", COLORS["card_bg"])],
+            foreground=[("selected", COLORS["accent"])],
         )
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_layout(self):
-        # Orange accent bar at very top
+        # Gold accent bar at very top
         top_bar = tk.Frame(self.root, bg=COLORS["accent"], height=3)
         top_bar.pack(side="top", fill="x")
 
         main = tk.Frame(self.root, bg=COLORS["bg"])
         main.pack(fill="both", expand=True)
 
-        # Sidebar (pitch black / very dark grey)
-        self.sidebar = tk.Frame(main, bg=COLORS["sidebar_bg"], width=220)
+        # Sidebar (warm cream)
+        self.sidebar = tk.Frame(main, bg=COLORS["sidebar_bg"], width=230)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
-        # 1px very dark separator between sidebar and content
+        # 1px warm gray separator between sidebar and content
         tk.Frame(main, bg=COLORS["border"], width=1).pack(side="left", fill="y")
 
         # Content area
@@ -125,13 +133,42 @@ class AppWindow:
 
         # Logo block
         logo_frame = tk.Frame(sb, bg=COLORS["sidebar_bg"])
-        logo_frame.pack(fill="x", pady=(24, 28), padx=18)
+        logo_frame.pack(fill="x", pady=(18, 16), padx=16)
 
-        tk.Label(logo_frame, text="✦", bg=COLORS["sidebar_bg"],
-                 fg=COLORS["accent"], font=("Segoe UI", 26, "bold")).pack()
-        tk.Label(logo_frame, text=SHOP_NAME.upper(), bg=COLORS["sidebar_bg"],
-                 fg=COLORS["text"], font=("Segoe UI", 11, "bold")).pack()
-        tk.Label(logo_frame, text="Management System", bg=COLORS["sidebar_bg"],
+        self._logo_photo = None
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        logo_candidates = [
+            os.path.join(base_dir, "assets", "etoffe_logo_color_transparent.png"),
+            os.path.join("assets", "etoffe_logo_color_transparent.png"),
+            os.path.abspath("assets/etoffe_logo_color_transparent.png"),
+        ]
+        for cand in logo_candidates:
+            if cand and os.path.exists(cand):
+                try:
+                    src_img = Image.open(cand).convert("RGBA")
+                    target_w = 170
+                    ratio = target_w / src_img.width
+                    target_h = int(src_img.height * ratio)
+                    resized = src_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    # Composite smoothly onto sidebar background color
+                    sb_hex = COLORS["sidebar_bg"].lstrip("#")
+                    bg_rgb = tuple(int(sb_hex[i:i+2], 16) for i in (0, 2, 4))
+                    canvas = Image.new("RGB", (target_w, target_h), bg_rgb)
+                    canvas.paste(resized, (0, 0), mask=resized.split()[3])
+                    self._logo_photo = ImageTk.PhotoImage(canvas)
+                    break
+                except Exception:
+                    pass
+
+        if self._logo_photo:
+            tk.Label(logo_frame, image=self._logo_photo, bg=COLORS["sidebar_bg"]).pack(pady=(0, 6))
+        else:
+            tk.Label(logo_frame, text="✦", bg=COLORS["sidebar_bg"],
+                     fg=COLORS["accent"], font=("Segoe UI", 24, "bold")).pack()
+            tk.Label(logo_frame, text="ÉTOFFE LAUNDRY", bg=COLORS["sidebar_bg"],
+                     fg=COLORS["text"], font=("Segoe UI", 11, "bold")).pack()
+
+        tk.Label(logo_frame, text=SHOP_TAGLINE, bg=COLORS["sidebar_bg"],
                  fg=COLORS["text_dim"], font=FONTS["small"]).pack()
 
         # Separator
@@ -165,16 +202,14 @@ class AppWindow:
         self._tick()
 
     def _make_nav_btn(self, key, icon, label):
-        # Outer padding frame (always sidebar_bg; active highlight is on inner)
         outer = tk.Frame(self.sidebar, bg=COLORS["sidebar_bg"], cursor="hand2")
         outer.pack(fill="x", padx=8, pady=2)
 
-        # Inner pill — gets orange bg + border-radius effect when active
         inner = tk.Frame(outer, bg=COLORS["sidebar_bg"], padx=12, pady=10)
         inner.pack(fill="x")
 
         icon_lbl = tk.Label(inner, text=icon, bg=COLORS["sidebar_bg"],
-                             fg=COLORS["text_dim"], font=("Segoe UI", 14))
+                             fg=COLORS["text_dim"], font=("Segoe UI", 13))
         icon_lbl.pack(side="left", padx=(0, 10))
 
         text_lbl = tk.Label(inner, text=label, bg=COLORS["sidebar_bg"],
@@ -188,7 +223,7 @@ class AppWindow:
 
         def on_enter(e, k=key):
             if self._current != k:
-                hover_bg = "#2C2C2E"
+                hover_bg = COLORS["sidebar_hover"]
                 for w in [inner, icon_lbl, text_lbl]:
                     w.config(bg=hover_bg)
 
@@ -208,10 +243,10 @@ class AppWindow:
     def _activate_nav(self, key):
         for k, widgets in self._nav_btns.items():
             if k == key:
-                # Active: vibrant orange pill with white text
-                inner_bg   = COLORS["sidebar_active"]   # #FF9500
-                icon_fg    = COLORS["text"]              # #FFFFFF
-                text_fg    = COLORS["text"]              # #FFFFFF
+                # Active: gold highlight with dark charcoal text
+                inner_bg   = COLORS["sidebar_active"]
+                icon_fg    = COLORS["btn_primary_fg"]
+                text_fg    = COLORS["btn_primary_fg"]
                 outer_bg   = COLORS["sidebar_bg"]
             else:
                 inner_bg   = COLORS["sidebar_bg"]
@@ -261,4 +296,3 @@ class AppWindow:
             frame = self.frames[name]
             if hasattr(frame, "refresh"):
                 frame.refresh()
-

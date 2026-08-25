@@ -1,5 +1,6 @@
 """
 ui/dashboard.py — Dashboard home screen with stats cards and recent orders
+Styled with Étoffe off-white, gold, and charcoal palette.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -26,7 +27,7 @@ class DashboardFrame(tk.Frame):
         tk.Label(header, text="Dashboard", bg=COLORS["card_bg"],
                  fg=COLORS["accent"], font=FONTS["title"]).pack(side="left", padx=20, pady=14)
 
-        tk.Label(header, text="Victory Laundry Management",
+        tk.Label(header, text="ÉTOFFE LAUNDRY MANAGEMENT",
                  bg=COLORS["card_bg"], fg=COLORS["text_dim"],
                  font=FONTS["small"]).pack(side="right", padx=20)
 
@@ -41,7 +42,6 @@ class DashboardFrame(tk.Frame):
         self._stats_frame.pack(fill="x", pady=(0, 20))
 
         self._stat_cards = {}
-        # Revenue card uses neon green; all others use pure white
         stat_defs = [
             ("today_orders",    "🧺",  "Today's Orders",   COLORS["text"]),
             ("today_revenue",   "💰",  "Today's Revenue",  COLORS["success"]),
@@ -92,12 +92,12 @@ class DashboardFrame(tk.Frame):
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<Button-3>", self._show_context_menu)
 
-        # Context menu — dark popover with orange active highlight
+        # Context menu — light styled popover with gold active highlight
         self._ctx_menu = tk.Menu(self, tearoff=0,
-                                  bg=COLORS["card_bg2"],
+                                  bg=COLORS["card_bg"],
                                   fg=COLORS["text"],
-                                  activebackground=COLORS["accent"],
-                                  activeforeground=COLORS["text"],
+                                  activebackground=COLORS["sidebar_active"],
+                                  activeforeground=COLORS["table_sel_fg"],
                                   font=FONTS["default"])
         self._ctx_menu.add_command(label="📄 View Details", command=self._view_selected)
         self._ctx_menu.add_command(label="✏️  Edit Order",  command=self._edit_selected)
@@ -113,9 +113,10 @@ class DashboardFrame(tk.Frame):
             self._tree.tag_configure(f"s_{status}", foreground=color)
 
     def _make_stat_card(self, parent, icon, label, value, color):
-        # Dark grey card — no shadow, highly rounded feel via padx/pady
+        # White card with thin warm-gray border
         card = tk.Frame(parent, bg=COLORS["card_bg"], padx=18, pady=18,
-                        relief="flat", bd=0)
+                        relief="flat", bd=0, highlightthickness=1,
+                        highlightbackground=COLORS["border"])
         card.columnconfigure(0, weight=1)
 
         tk.Label(card, text=icon, bg=COLORS["card_bg"],

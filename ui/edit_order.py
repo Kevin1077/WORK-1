@@ -135,7 +135,7 @@ class EditOrderPopup(tk.Toplevel):
         self._item_rows = []
         self._cloth_types = db.get_cloth_types()
 
-        self.title(f"Edit Order #{order_id} — Victory Laundry")
+        self.title(f"Edit Order #{order_id} — Étoffe Laundry")
         self.configure(bg=COLORS["bg"])
         self.geometry("900x700")
         self.grab_set()

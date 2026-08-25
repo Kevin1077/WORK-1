@@ -1,6 +1,7 @@
 """
 ui/progress.py — Progress tracking view with charts for Revenue and Order Count
 Provides Day, Week, Month, Year filter views using matplotlib embedded in Tkinter.
+Styled with Étoffe off-white, gold, and charcoal palette.
 """
 import tkinter as tk
 from datetime import datetime
@@ -55,7 +56,8 @@ class ProgressFrame(tk.Frame):
         body.pack(fill="both", expand=True, padx=24, pady=20)
 
         # Period selector bar
-        bar = tk.Frame(body, bg=COLORS["card_bg"], padx=16, pady=12)
+        bar = tk.Frame(body, bg=COLORS["card_bg"], padx=16, pady=12, highlightthickness=1,
+                       highlightbackground=COLORS["border"])
         bar.pack(fill="x", pady=(0, 16))
 
         tk.Label(bar, text="View Progress By:", bg=COLORS["card_bg"],
@@ -76,7 +78,8 @@ class ProgressFrame(tk.Frame):
         make_btn(bar, "🔄 Refresh", self.refresh, "neutral").pack(side="right")
 
         # Container for graphs
-        self._graph_container = tk.Frame(body, bg=COLORS["card_bg"], padx=10, pady=10)
+        self._graph_container = tk.Frame(body, bg=COLORS["card_bg"], padx=10, pady=10,
+                                         highlightthickness=1, highlightbackground=COLORS["border"])
         self._graph_container.pack(fill="both", expand=True)
 
         if not HAS_MPL:
@@ -89,7 +92,7 @@ class ProgressFrame(tk.Frame):
 
     def _set_period(self, period: str):
         self._current_period = period
-        # Highlight active button — orange bg, white text
+        # Highlight active button — gold bg, charcoal text
         btn_map = {
             "day": self._btn_day,
             "week": self._btn_week,
@@ -98,7 +101,7 @@ class ProgressFrame(tk.Frame):
         }
         for p, b in btn_map.items():
             if p == period:
-                b.config(bg=COLORS["accent"], fg="#FFFFFF")
+                b.config(bg=COLORS["accent"], fg=COLORS["btn_primary_fg"])
             else:
                 b.config(bg=COLORS["btn_neutral"], fg=COLORS["btn_neutral_fg"])
         self.refresh()
@@ -144,13 +147,14 @@ class ProgressFrame(tk.Frame):
         x_pos    = list(range(len(labels)))
 
         # ── Design constants ────────────────────────────────────────────────
-        CHART_BG    = "#1E1E1E"
-        ORANGE      = "#FF9500"
-        LABEL_COLOR = "#E0E0E0"
-        GRID_COLOR  = "#444444"
-        SPINE_COLOR = "#3A3A3C"
+        CHART_BG    = "#FFFFFF"
+        GOLD        = COLORS["accent"]
+        GOLD_DARK   = COLORS["accent_dark"]
+        LABEL_COLOR = COLORS["text"]
+        GRID_COLOR  = COLORS["border2"]
+        SPINE_COLOR = COLORS["border"]
 
-        fig = Figure(figsize=(10, 5), dpi=100, facecolor=COLORS["bg"])
+        fig = Figure(figsize=(10, 5), dpi=100, facecolor=COLORS["card_bg"])
         fig.subplots_adjust(hspace=0.55, bottom=0.18)
 
         def _style_ax(ax, title, ylabel):
@@ -175,14 +179,14 @@ class ProgressFrame(tk.Frame):
         ax1 = fig.add_subplot(211)
         ax1.plot(
             x_pos, revenues,
-            color=ORANGE, linewidth=2.5, marker="o", markersize=7,
-            markerfacecolor="#FFFFFF", markeredgecolor=ORANGE, markeredgewidth=2.5,
+            color=GOLD, linewidth=2.5, marker="o", markersize=6,
+            markerfacecolor="#FFFFFF", markeredgecolor=GOLD_DARK, markeredgewidth=2.0,
         )
         _style_ax(ax1, f"Revenue Trend ({title_suffix})", "Revenue (₹)")
 
         # ── Subplot 2: Number of Orders (Bar Chart) ──────────────────────────
         ax2 = fig.add_subplot(212)
-        ax2.bar(x_pos, counts, color=ORANGE, width=0.6, edgecolor=ORANGE)
+        ax2.bar(x_pos, counts, color=GOLD, width=0.6, edgecolor=GOLD_DARK)
         ax2.set_xlabel("Time Period", fontsize=9, color=LABEL_COLOR)
         _style_ax(ax2, f"Number of Orders ({title_suffix})", "Orders")
 

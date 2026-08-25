@@ -1,69 +1,72 @@
 """
-ui/theme.py — Color palette, fonts, and style constants for Victory Laundry
-iOS Calculator-inspired dark theme.
+ui/theme.py — Color palette, fonts, and style constants for Étoffe Laundry
+Refined, elegant Off-White, Warm Cream, Gold, and Charcoal theme.
 """
 
 COLORS = {
     # ── Backgrounds ──────────────────────────────────────────────────────────
-    "bg":              "#000000",   # Pitch Black — main window background
-    "sidebar_bg":      "#1C1C1E",   # Very Dark Grey — sidebar
-    "sidebar_active":  "#FF9500",   # Vibrant Orange — active nav item highlight
-    "card_bg":         "#333333",   # Dark Grey — stat cards, header bar
-    "card_bg2":        "#2C2C2E",   # Slightly lighter dark — menus/popovers
+    "bg":              "#F7F4EE",   # Off-white / Warm Cream — main window background
+    "sidebar_bg":      "#EFEAE1",   # Warm Cream — sidebar background
+    "sidebar_active":  "#C9A84E",   # Étoffe Gold — active nav item highlight
+    "sidebar_hover":   "#E5DFD5",   # Subtle cream hover for sidebar items
+    "card_bg":         "#FFFFFF",   # Pure White — main card background
+    "card_bg2":        "#F2EEE7",   # Warm Cream — secondary card / popup background
+    "header_bg":       "#FFFFFF",   # Crisp White — top header bar background
 
     # ── Accent ───────────────────────────────────────────────────────────────
-    "accent":          "#FF9500",   # Vibrant Orange — primary accent
-    "accent_dark":     "#E08800",   # Darker orange for pressed states
-    "accent_light":    "#FFB347",   # Lighter orange tint
+    "accent":          "#C9A84E",   # Primary Étoffe Gold accent
+    "accent_dark":     "#A88732",   # Darker Gold for hover / pressed states
+    "accent_light":    "#E5D39A",   # Lighter Gold tint
 
     # ── Text ─────────────────────────────────────────────────────────────────
-    "text":            "#FFFFFF",   # Pure White — primary text
-    "text_dim":        "#A6A6A6",   # Light Grey — secondary / subtitle text
-    "text_muted":      "#636366",   # Muted grey — clock, minor labels
+    "text":            "#242424",   # Deep Charcoal — primary text
+    "text_dim":        "#6F6A62",   # Warm Charcoal — secondary / subtitle text
+    "text_muted":      "#969087",   # Muted taupe — clock, minor labels
 
-    # ── Status colours (dark-mode vivid variants) ─────────────────────────
-    "success":         "#32D74B",   # Neon Green — Ready / Delivered
-    "success_fg":      "#32D74B",
-    "danger":          "#FF453A",   # Bright Red — Cancelled / errors
-    "danger_fg":       "#FF453A",
-    "warning":         "#FFD60A",   # Bright Yellow — In Progress
-    "warning_fg":      "#FFD60A",
-    "info_fg":         "#0A84FF",   # Bright Blue — Received
+    # ── Status colours (premium softened variants) ───────────────────────────
+    "success":         "#3F8F5B",   # Forest Green — Ready / Delivered
+    "success_fg":      "#3F8F5B",
+    "danger":          "#C94B4B",   # Soft Crimson — Cancelled / errors
+    "danger_fg":       "#C94B4B",
+    "warning":         "#C9972E",   # Warm Amber — In Progress
+    "warning_fg":      "#C9972E",
+    "info_fg":         "#4A78A8",   # Steel Blue — Received
 
     # ── Borders & inputs ─────────────────────────────────────────────────────
-    "border":          "#1C1C1E",   # Very Dark Grey — dividers
-    "border2":         "#3A3A3C",   # Slightly lighter — input outlines
-    "input_bg":        "#2C2C2E",   # Dark input background
-    "input_fg":        "#FFFFFF",   # White input text
+    "border":          "#D9D2C7",   # Warm gray — dividers and cards
+    "border2":         "#E5DFD5",   # Secondary border — inputs
+    "input_bg":        "#FFFFFF",   # White input background
+    "input_fg":        "#242424",   # Deep Charcoal input text
 
     # ── Table / Treeview ─────────────────────────────────────────────────────
-    "table_header":    "#333333",   # Dark Grey header row
-    "table_row":       "#000000",   # Pitch Black rows
-    "table_alt":       "#0A0A0A",   # Almost-black alternating rows
-    "table_sel_bg":    "#FF9500",   # Orange selected row
-    "table_sel_fg":    "#FFFFFF",   # White text on selected row
+    "table_header":    "#E8E1D6",   # Warm cream header row
+    "table_header_fg": "#242424",   # Charcoal header text
+    "table_row":       "#FFFFFF",   # Clean White rows
+    "table_alt":       "#FAF8F4",   # Very light warm cream alternating rows
+    "table_sel_bg":    "#D8C27A",   # Soft Gold selected row
+    "table_sel_fg":    "#242424",   # Charcoal text on selected row
 
     # ── Buttons ──────────────────────────────────────────────────────────────
-    # Primary → Orange bg, white text (New Order)
-    "btn_primary":        "#FF9500",
-    "btn_primary_fg":     "#FFFFFF",
-    "btn_primary_border": "#FF9500",
-    # Success → dark card bg, neon-green text
-    "btn_success":        "#333333",
-    "btn_success_fg":     "#32D74B",
-    "btn_success_border": "#32D74B",
-    # Danger → dark card bg, bright-red text
-    "btn_danger":         "#333333",
-    "btn_danger_fg":      "#FF453A",
-    "btn_danger_border":  "#FF453A",
-    # Neutral → dark card bg, white text (Search, Date Records, Refresh)
-    "btn_neutral":        "#333333",
-    "btn_neutral_fg":     "#FFFFFF",
-    "btn_neutral_border": "#3A3A3C",
-    # Edit → dark card bg, bright-blue text
-    "btn_edit":           "#333333",
-    "btn_edit_fg":        "#0A84FF",
-    "btn_edit_border":    "#0A84FF",
+    # Primary → Gold bg, charcoal text (New Order, Save, etc.)
+    "btn_primary":        "#C9A84E",
+    "btn_primary_fg":     "#242424",
+    "btn_primary_border": "#C9A84E",
+    # Success → White bg, green text/border
+    "btn_success":        "#FFFFFF",
+    "btn_success_fg":     "#3F8F5B",
+    "btn_success_border": "#3F8F5B",
+    # Danger → White bg, red text/border
+    "btn_danger":         "#FFFFFF",
+    "btn_danger_fg":      "#C94B4B",
+    "btn_danger_border":  "#C94B4B",
+    # Neutral → White bg, charcoal text, warm-gray border (Search, Date Records, Refresh)
+    "btn_neutral":        "#FFFFFF",
+    "btn_neutral_fg":     "#242424",
+    "btn_neutral_border": "#D9D2C7",
+    # Edit / Info → White bg, blue text/border
+    "btn_edit":           "#FFFFFF",
+    "btn_edit_fg":        "#4A78A8",
+    "btn_edit_border":    "#4A78A8",
 }
 
 FONTS = {
@@ -81,16 +84,16 @@ FONTS = {
 }
 
 STATUS_COLORS = {
-    "Received":    "#0A84FF",   # Bright Blue
-    "In Progress": "#FFD60A",   # Bright Yellow
-    "Ready":       "#32D74B",   # Neon Green
-    "Delivered":   "#32D74B",   # Neon Green (same as Ready)
-    "Cancelled":   "#FF453A",   # Bright Red
+    "Received":    "#4A78A8",   # Steel Blue
+    "In Progress": "#C9972E",   # Warm Amber
+    "Ready":       "#3F8F5B",   # Forest Green
+    "Delivered":   "#3F8F5B",   # Forest Green (same as Ready)
+    "Cancelled":   "#C94B4B",   # Soft Crimson
 }
 
 STATUS_LIST = ["Received", "In Progress", "Ready", "Delivered", "Cancelled"]
 
-SHOP_NAME = "Victory Laundry"
-SHOP_TAGLINE = "Professional Laundry Services"
-SHOP_PHONE = ""   # fill in shop contact if needed
-
+SHOP_NAME = "ÉTOFFE LAUNDRY"
+SHOP_TAGLINE = "Management System"
+SHOP_FULL_TITLE = "ÉTOFFE LAUNDRY MANAGEMENT SYSTEM"
+SHOP_PHONE = ""

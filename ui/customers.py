@@ -43,7 +43,7 @@ class CustomersFrame(tk.Frame):
         hdr.pack(fill="x")
         tk.Label(hdr, text="Customers", bg=COLORS["card_bg"],
                  fg=COLORS["accent"], font=FONTS["title"]).pack(side="left", padx=20, pady=14)
-        tk.Label(hdr, text="Victory Laundry Management", bg=COLORS["card_bg"],
+        tk.Label(hdr, text="ÉTOFFE LAUNDRY MANAGEMENT", bg=COLORS["card_bg"],
                  fg=COLORS["text_dim"], font=FONTS["small"]).pack(side="right", padx=20)
         tk.Frame(self, bg=COLORS["border"], height=1).pack(fill="x")
 
@@ -410,7 +410,7 @@ class CustomerMessageDialog(tk.Toplevel):
             highlightcolor=COLORS["accent"]
         )
         self.txt_area.pack(fill="both", expand=True)
-        default_msg = f"Hello {self.customer['name']},\n\nThank you for choosing Victory Laundry! "
+        default_msg = f"Hello {self.customer['name']},\n\nThank you for choosing Étoffe Laundry! "
         self.txt_area.insert("1.0", default_msg)
 
         # Quick templates
@@ -423,8 +423,8 @@ class CustomerMessageDialog(tk.Toplevel):
             self.txt_area.delete("1.0", "end")
             self.txt_area.insert("1.0", t_str.format(name=self.customer['name']))
 
-        t1 = "Hello {name},\nWe have a special 10% discount on laundry services this week! Visit Victory Laundry today."
-        t2 = "Hello {name},\nJust checking in from Victory Laundry! Let us know if you need pickup for your laundry."
+        t1 = "Hello {name},\nWe have a special 10% discount on laundry services this week! Visit Étoffe Laundry today."
+        t2 = "Hello {name},\nJust checking in from Étoffe Laundry! Let us know if you need pickup for your laundry."
 
         tk.Button(tmpl_frame, text="Promo Offer", command=lambda: _set_tmpl(t1),
                   bg=COLORS["card_bg"], fg=COLORS["text_dim"], font=FONTS["small"], relief="flat", padx=6, pady=2, cursor="hand2").pack(side="left", padx=2)
@@ -520,7 +520,7 @@ class BulkMessageDialog(tk.Toplevel):
             highlightcolor=COLORS["accent"]
         )
         self.txt_area.pack(fill="x", pady=(0, 10))
-        self.txt_area.insert("1.0", "Greetings from Victory Laundry!\n\nWe have an exclusive offer for our valued customers. Visit us today for premium laundry services.")
+        self.txt_area.insert("1.0", "Greetings from Étoffe Laundry!\n\nWe have an exclusive offer for our valued customers. Visit us today for premium laundry services.")
 
         # Recipients list header with Select All
         recip_hdr = tk.Frame(body, bg=COLORS["bg"])

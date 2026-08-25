@@ -1,5 +1,5 @@
 """
-ui/print_settings.py — Comprehensive Print Settings & Page Adjustments UI for Victory Laundry
+ui/print_settings.py — Comprehensive Print Settings & Page Adjustments UI for Étoffe Laundry
 """
 import tkinter as tk
 from tkinter import ttk, messagebox

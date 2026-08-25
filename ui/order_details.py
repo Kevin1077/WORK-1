@@ -17,7 +17,7 @@ class OrderDetailsPopup(tk.Toplevel):
         self.refresh_cb = refresh_cb
         self._order     = None
 
-        self.title(f"Order #{order_id} — Victory Laundry")
+        self.title(f"Order #{order_id} — Étoffe Laundry")
         self.configure(bg=COLORS["bg"])
         self.resizable(False, False)
         self.grab_set()

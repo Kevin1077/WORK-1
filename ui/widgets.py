@@ -1,5 +1,5 @@
 """
-ui/widgets.py — Shared reusable widget helpers for Victory Laundry UI
+ui/widgets.py — Shared reusable widget helpers for Étoffe Laundry UI
 """
 import tkinter as tk
 from tkinter import ttk
@@ -12,8 +12,6 @@ def make_btn(parent, text, command, style="primary", width=None, **kw):
     """
     Create a flat-styled tk.Button.
     style: 'primary' | 'success' | 'danger' | 'edit' | 'neutral' | 'warning'
-    All buttons: off-white bg, colored border, colored text.
-    Hover: inverts to colored bg + white text (pop effect).
     """
     cfg = {
         "primary": (COLORS["btn_primary"],  COLORS["btn_primary_fg"],  COLORS["btn_primary_border"]),
@@ -31,9 +29,9 @@ def make_btn(parent, text, command, style="primary", width=None, **kw):
     btn = tk.Button(
         parent, text=text, command=command,
         bg=bg, fg=fg,
-        activebackground=border, activeforeground=bg,
+        activebackground=border, activeforeground=COLORS["btn_primary_fg"] if style == "primary" else "#FFFFFF",
         relief="flat", bd=0, cursor="hand2",
-        highlightthickness=2,
+        highlightthickness=1,
         highlightbackground=border,
         highlightcolor=border,
         **kw
@@ -41,12 +39,15 @@ def make_btn(parent, text, command, style="primary", width=None, **kw):
     if width:
         btn.config(width=width)
 
-    # Hover: for orange buttons, darken; for dark-card buttons, lighten slightly
+    # Hover effect
     def _enter(e):
-        if bg == COLORS["btn_primary"]:  # Orange bg — darken on hover
+        if style == "primary":
             btn.config(bg=COLORS["accent_dark"], fg="#FFFFFF")
-        else:  # Dark card btn — show colored bg on hover
-            btn.config(bg=border, fg="#000000" if border == COLORS["btn_neutral_border"] else "#FFFFFF")
+        elif style == "neutral":
+            btn.config(bg=COLORS["card_bg2"], fg=COLORS["text"])
+        else:
+            btn.config(bg=border, fg="#FFFFFF")
+
     def _leave(e):
         btn.config(bg=bg, fg=fg)
 
@@ -76,7 +77,7 @@ def make_entry(parent, textvariable=None, width=20, **kw):
         insertbackground=COLORS["text"],
         relief="flat",
         highlightthickness=1,
-        highlightbackground=COLORS["border2"],
+        highlightbackground=COLORS["border"],
         highlightcolor=COLORS["accent"],
         **kw
     )
@@ -131,7 +132,8 @@ def section_header(parent, title, bg=None):
 
 def card(parent, padx=16, pady=12, bg=None, **kw):
     bg = bg or COLORS["card_bg"]
-    f = tk.Frame(parent, bg=bg, padx=padx, pady=pady, **kw)
+    f = tk.Frame(parent, bg=bg, padx=padx, pady=pady, highlightthickness=1,
+                 highlightbackground=COLORS["border"], relief="flat", **kw)
     return f
 
 
@@ -185,9 +187,9 @@ def build_tree(parent, columns, headings, col_widths, height=15, show_scrollbar=
 
     tree = ttk.Treeview(frame, columns=columns, show="headings",
                         height=height, selectmode="browse")
-    # Row alternating — pitch black / almost-black for subtle depth
-    tree.tag_configure("odd",  background=COLORS["table_row"],  foreground=COLORS["text_dim"])
-    tree.tag_configure("even", background=COLORS["table_alt"],  foreground=COLORS["text_dim"])
+    # Row alternating — clean white / subtle warm cream for crisp readability
+    tree.tag_configure("odd",  background=COLORS["table_row"],  foreground=COLORS["text"])
+    tree.tag_configure("even", background=COLORS["table_alt"],  foreground=COLORS["text"])
 
     for col, heading, width in zip(columns, headings, col_widths):
         tree.heading(col, text=heading, anchor="w")
@@ -229,8 +231,8 @@ class Tooltip:
         self._tip = tk.Toplevel(self.widget)
         self._tip.wm_overrideredirect(True)
         self._tip.wm_geometry(f"+{x}+{y}")
-        tk.Label(self._tip, text=self.text, bg="#ffffe0", fg="#333",
-                 font=FONTS["small"], relief="solid", bd=1).pack()
+        tk.Label(self._tip, text=self.text, bg=COLORS["card_bg2"], fg=COLORS["text"],
+                 font=FONTS["small"], relief="solid", bd=1, highlightthickness=0).pack()
 
     def hide(self, event=None):
         if self._tip:
