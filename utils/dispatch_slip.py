@@ -97,7 +97,7 @@ def _draw_slip(c: canvas.Canvas,
 
     # Text fields ─────────────────────────────────────────────────────────
     FB, FV, ST = "Helvetica-Bold", "Helvetica-Bold", 10
-    pfx_w = stringWidth("Cust: ", FB, ST)   # same width for all labels
+    pfx_w = stringWidth("Rmk:  ", FB, ST)
     val_w = USABLE - pfx_w
 
     def row(label: str, value: str, italic: bool = False) -> None:
@@ -106,13 +106,17 @@ def _draw_slip(c: canvas.Canvas,
         y -= 3.2 * mm
         if y < MARGIN:          # safety: stop if we'd go below bottom margin
             return
-        c.setFont(FB, ST)
-        c.drawString(left, y, label)
-        c.setFont(vfont, ST)
-        c.drawString(left + pfx_w, y, _fit(value, vfont, ST, val_w))
+        if label:
+            c.setFont(FB, ST)
+            c.drawString(left, y, label)
+            c.setFont(vfont, ST)
+            c.drawString(left + pfx_w, y, _fit(value, vfont, ST, val_w))
+        else:
+            c.setFont(vfont, ST)
+            c.drawString(left, y, _fit(value, vfont, ST, USABLE))
 
-    row("Cust: ", cust_name)
-    row("Item: ", item_desc)
+    row("", cust_name)
+    row("", item_desc)
     if notes_text:
         row("Rmk:  ", notes_text, italic=True)
 
@@ -293,11 +297,11 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             max_text_w = w - (2 * margin_x)
             y_pos = line2_y + int(14 * scale)
 
-            cust_line = _fit_image_text(draw, f"Cust: {cust_name}", font_bold, max_text_w)
+            cust_line = _fit_image_text(draw, cust_name, font_bold, max_text_w)
             draw.text((margin_x, y_pos), cust_line, fill=(0, 0, 0), font=font_bold)
             y_pos += int(36 * scale)
 
-            item_line = _fit_image_text(draw, f"Item: {item_desc}", font_bold, max_text_w)
+            item_line = _fit_image_text(draw, item_desc, font_bold, max_text_w)
             draw.text((margin_x, y_pos), item_line, fill=(0, 0, 0), font=font_bold)
 
             if notes_text:
