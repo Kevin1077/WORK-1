@@ -140,10 +140,7 @@ def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
             for sub in range(1, qty + 1):
                 garment_counter += 1
                 ref_code  = f"P{order_id}-{garment_counter}"
-                item_desc = cloth_type + (
-                    f" ({sub}/{qty})" if qty > 1
-                    else f" ({garment_counter}/{total_garments})"
-                )
+                item_desc = cloth_type + (f" ({sub}/{qty})" if qty > 1 else "")
 
                 # barcode PNG
                 rv = io.BytesIO()
@@ -248,10 +245,7 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
         for sub in range(1, qty + 1):
             garment_counter += 1
             ref_code  = f"P{order_id}-{garment_counter}"
-            item_desc = cloth_type + (
-                f" ({sub}/{qty})" if qty > 1
-                else f" ({garment_counter}/{total_garments})"
-            )
+            item_desc = cloth_type + (f" ({sub}/{qty})" if qty > 1 else "")
 
             img = Image.new("RGB", (w, h), (255, 255, 255))
             draw = ImageDraw.Draw(img)
