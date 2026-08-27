@@ -1,0 +1,94 @@
+# Fix Direct Print Orientation — Use PDF Path for Silent Printing
+
+**Problem:** "Direct" (no-preview) print mode for dispatch challans and dispatch slips produces rotated/upside-down output because it generates PNG images and prints them via [silent_print_image()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#562-693) (raw Win32 GDI blit with no orientation handling). "Preview" mode works correctly because it generates PDFs and prints through the OS print pipeline.
+
+**Fix:** Make "direct" mode use the same PDF generation as "preview" mode, then print silently via [silent_print_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#695-744) instead of the GDI image path.
+
+## Proposed Changes
+
+### Receipt Module
+
+#### [MODIFY] [receipt.py](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py)
+
+**[open_receipt_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#949-974)** (line 949–973): Rewrite so both branches call [generate_dispatch_challan_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#299-560). In "preview" mode, open the PDF for viewing (unchanged). In "direct" mode, call [silent_print_pdf(path)](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#695-744) instead of delegating to [open_receipt()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#932-947).
+
+```diff
+ def open_receipt_pdf(order_data: dict, parent_window=None) -> str:
+     ...
+     if print_mode == "preview":
+         path = generate_dispatch_challan_pdf(order_data)
+         ...  # open for viewing — unchanged
+         return path
+     else:
+-        return open_receipt(order_data)
++        path = generate_dispatch_challan_pdf(order_data)
++        silent_print_pdf(path)
++        return path
+```
+
+**[open_receipt()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#932-947)** (line 932–946): Also switch to PDF + [silent_print_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#695-744) because it's called from [print_settings.py](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/ui/print_settings.py) test-print button. This ensures test prints also go through the correct pipeline.
+
+```diff
+ def open_receipt(order_data: dict):
+-    path = generate_dispatch_challan_image(order_data)
++    path = generate_dispatch_challan_pdf(order_data)
+     if print_mode == "preview":
+         ...  # open for viewing
+     else:
+-        silent_print_image(path)
++        silent_print_pdf(path)
+     return path
+```
+
+---
+
+### Dispatch Slip Module
+
+#### [MODIFY] [dispatch_slip.py](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py)
+
+**[open_dispatch_slip()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#281-306)** (line 281–305): Rewrite the `else` (direct) branch to call [generate_dispatch_slip()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#120-186) (PDF) + [silent_print_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#695-744) instead of [generate_dispatch_slip_images()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#188-279) + [silent_print_image()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#562-693).
+
+```diff
+     else:
+-        from utils.receipt import silent_print_image
+-        image_paths = generate_dispatch_slip_images(order_data)
+-        for img_path in image_paths:
+-            silent_print_image(img_path, printer_name=dispatch_printer)
+-        return image_paths[0] if image_paths else ""
++        from utils.receipt import silent_print_pdf
++        path = generate_dispatch_slip(order_data)
++        silent_print_pdf(path, printer_name=dispatch_printer)
++        return path
+```
+
+---
+
+## Margin/Scale Analysis
+
+The image print path used `margin_left_mm`, `margin_top_mm`, `scale_pct`, and `copies` from [silent_print_image()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#562-693). For the PDF path:
+
+- **Dispatch challans**: All positioning is already baked into the PDF layout (`TOP_OFFSET = 57mm`, `ML = 10mm`, `MR = 8mm`) in [generate_dispatch_challan_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#299-560). No runtime margin adjustment needed.
+- **Dispatch slips**: The PDF [generate_dispatch_slip()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#120-186) uses absolute coordinates within its 35×40mm page. The OS print driver handles page sizing. No runtime margin adjustment needed.
+
+> [!NOTE]
+> [generate_dispatch_challan_image()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#746-930) and [generate_dispatch_slip_images()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#188-279) are **not deleted** — they are only disconnected from the print flow. The only non-scratch callers were [open_receipt()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#932-947) and [open_dispatch_slip()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#281-306), both of which are being updated.
+
+## Dependency Check
+
+| Function | Callers Found | Action |
+|---|---|---|
+| [generate_dispatch_challan_image](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#746-930) | [open_receipt()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#932-947) in receipt.py, [scratch/test_challan_img.py](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/scratch/test_challan_img.py) | Disconnected from print flow; scratch file is dev-only |
+| [generate_dispatch_slip_images](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#188-279) | [open_dispatch_slip()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#281-306) in dispatch_slip.py | Disconnected from print flow |
+| [open_receipt](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#932-947) | [open_receipt_pdf()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#949-974) in receipt.py, [print_settings.py](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/ui/print_settings.py) test button | Updated to use PDF path |
+| [silent_print_image](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#562-693) | [open_receipt()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/receipt.py#932-947), [open_dispatch_slip()](file:///c:/Users/Kevin%20Biju%20Kulangara/OneDrive/Desktop/laundry/utils/dispatch_slip.py#281-306) | No longer called for challans/slips |
+
+## Verification Plan
+
+### Manual Verification
+Since this is a print-hardware-dependent change, automated tests cannot verify the physical output. Please test after the changes:
+
+1. **Direct challan print**: Create/open an order → click "Print Receipt" with print mode set to "Direct" → confirm the challan prints correctly oriented on pre-printed letterhead
+2. **Preview challan print**: Same order → switch to "Preview" mode → confirm PDF opens and prints correctly (should be unchanged)
+3. **Direct dispatch slip print**: Same order → print dispatch slips in "Direct" mode → confirm barcode labels print correctly
+4. **Test print button**: Go to Print Settings → click "Test Receipt Print" → confirm it prints correctly
+5. **Test barcode button**: Print Settings → "Test Barcode Print" → confirm it prints correctly

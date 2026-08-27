@@ -225,8 +225,8 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
 
     scale = min(1.0, h / 450.0)
     s_title = max(18, int(24 * scale))
-    s_bold  = max(22, int(28 * scale))
-    s_code  = max(22, int(28 * scale))
+    s_bold  = max(26, int(34 * scale))
+    s_code  = max(26, int(34 * scale))
     s_rmk   = max(18, int(24 * scale))
 
     try:
@@ -325,4 +325,4 @@ def open_dispatch_slip(order_data: dict) -> str:
         for img_path in image_paths:
             silent_print_image(img_path, printer_name=dispatch_printer)
         return image_paths[0] if image_paths else ""
-
+
