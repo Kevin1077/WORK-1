@@ -9,6 +9,7 @@ so it is guaranteed to fit on a single label with no overflow.
 import os
 import tempfile
 import io
+import re
 import barcode
 from barcode.writer import ImageWriter
 
@@ -36,6 +37,67 @@ def _fit(text: str, font: str, size: float, max_w: float) -> str:
             return candidate
         text = text[:-1]
     return "…"
+
+
+def _wrap_item_text_pdf(text: str, font: str, size: float, max_w: float) -> list[str]:
+    """Wrap item_desc into at most 2 lines, ensuring (x/y) counter is never cut off."""
+    if stringWidth(text, font, size) <= max_w:
+        return [text]
+
+    match = re.search(r'\s+(\(\d+/\d+\))$', text)
+    suffix = match.group(1) if match else ''
+
+    words = text.split()
+    if not words:
+        return [text]
+
+    l1_words = []
+    l2_words = []
+
+    for i, word in enumerate(words):
+        cand = ' '.join(l1_words + [word])
+        if stringWidth(cand, font, size) <= max_w:
+            l1_words.append(word)
+        else:
+            l2_words = words[i:]
+            break
+
+    if not l1_words and l2_words:
+        first_word = l2_words[0]
+        chars = ''
+        for ch in first_word:
+            if stringWidth(chars + ch, font, size) <= max_w:
+                chars += ch
+            else:
+                break
+        l1_words = [chars] if chars else [first_word[:1]]
+        rem_first = first_word[len(chars):]
+        l2_words = ([rem_first] if rem_first else []) + l2_words[1:]
+
+    line1 = ' '.join(l1_words)
+    line2 = ' '.join(l2_words)
+
+    if stringWidth(line2, font, size) <= max_w:
+        return [line1, line2]
+
+    if suffix:
+        if line2.endswith(suffix):
+            stem = line2[:-len(suffix)].rstrip()
+        else:
+            stem = line2.rstrip()
+        while stem:
+            cand = stem + '... ' + suffix
+            if stringWidth(cand, font, size) <= max_w:
+                return [line1, cand]
+            stem = stem[:-1]
+        return [line1, '... ' + suffix]
+    else:
+        while line2:
+            cand = line2 + '...'
+            if stringWidth(cand, font, size) <= max_w:
+                return [line1, cand]
+            line2 = line2[:-1]
+        return [line1, '...']
 
 
 def _draw_slip(c: canvas.Canvas,
@@ -107,7 +169,8 @@ def _draw_slip(c: canvas.Canvas,
         c.drawString(left, y, _fit(value, FV, ST, USABLE))
 
     row(cust_name)
-    row(item_desc)
+    for line in _wrap_item_text_pdf(item_desc, FV, ST, USABLE):
+        row(line)
 
 
 def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
@@ -188,6 +251,73 @@ def _fit_image_text(draw, text: str, font, max_w: int) -> str:
             return candidate
         text = text[:-1]
     return "…"
+
+
+def _wrap_item_text_image(draw, text: str, font, max_w: int) -> list[str]:
+    """Wrap item_desc into at most 2 lines in PIL image, ensuring (x/y) counter is never cut off."""
+    bbox = draw.textbbox((0, 0), text, font=font)
+    if bbox[2] - bbox[0] <= max_w:
+        return [text]
+
+    match = re.search(r'\s+(\(\d+/\d+\))$', text)
+    suffix = match.group(1) if match else ''
+
+    words = text.split()
+    if not words:
+        return [text]
+
+    l1_words = []
+    l2_words = []
+
+    for i, word in enumerate(words):
+        cand = ' '.join(l1_words + [word])
+        bbox = draw.textbbox((0, 0), cand, font=font)
+        if bbox[2] - bbox[0] <= max_w:
+            l1_words.append(word)
+        else:
+            l2_words = words[i:]
+            break
+
+    if not l1_words and l2_words:
+        first_word = l2_words[0]
+        chars = ''
+        for ch in first_word:
+            bbox = draw.textbbox((0, 0), chars + ch, font=font)
+            if bbox[2] - bbox[0] <= max_w:
+                chars += ch
+            else:
+                break
+        l1_words = [chars] if chars else [first_word[:1]]
+        rem_first = first_word[len(chars):]
+        l2_words = ([rem_first] if rem_first else []) + l2_words[1:]
+
+    line1 = ' '.join(l1_words)
+    line2 = ' '.join(l2_words)
+
+    bbox2 = draw.textbbox((0, 0), line2, font=font)
+    if bbox2[2] - bbox2[0] <= max_w:
+        return [line1, line2]
+
+    if suffix:
+        if line2.endswith(suffix):
+            stem = line2[:-len(suffix)].rstrip()
+        else:
+            stem = line2.rstrip()
+        while stem:
+            cand = stem + '... ' + suffix
+            bbox_c = draw.textbbox((0, 0), cand, font=font)
+            if bbox_c[2] - bbox_c[0] <= max_w:
+                return [line1, cand]
+            stem = stem[:-1]
+        return [line1, '... ' + suffix]
+    else:
+        while line2:
+            cand = line2 + '...'
+            bbox_c = draw.textbbox((0, 0), cand, font=font)
+            if bbox_c[2] - bbox_c[0] <= max_w:
+                return [line1, cand]
+            line2 = line2[:-1]
+        return [line1, '...']
 
 
 def generate_dispatch_slip_images(order_data: dict) -> list[str]:
@@ -284,8 +414,10 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             draw.text((margin_x, y_pos), cust_line, fill=(0, 0, 0), font=font_bold)
             y_pos += int(36 * scale)
 
-            item_line = _fit_image_text(draw, item_desc, font_bold, max_text_w)
-            draw.text((margin_x, y_pos), item_line, fill=(0, 0, 0), font=font_bold)
+            item_lines = _wrap_item_text_image(draw, item_desc, font_bold, max_text_w)
+            for line in item_lines:
+                draw.text((margin_x, y_pos), line, fill=(0, 0, 0), font=font_bold)
+                y_pos += int(36 * scale)
 
             out_file = os.path.join(tempfile.gettempdir(), f"victory_dispatch_slip_order_{order_id}_{garment_counter}.png")
             img.save(out_file, "PNG", dpi=(300, 300))
