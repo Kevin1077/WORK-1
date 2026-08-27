@@ -53,6 +53,7 @@ class PriceListFrame(tk.Frame):
         self._price_entry.bind("<Return>", lambda e: self._add_price())
 
         make_btn(row, "➕ Add / Update", self._add_price, "primary").pack(side="left")
+        make_btn(row, "🗑️ Delete Selected", self._delete_selected, "danger").pack(side="left", padx=(8, 0))
 
         # ── Price table ────────────────────────────────────────────────────────
         cols   = ("cloth_type", "default_price")

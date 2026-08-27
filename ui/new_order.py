@@ -29,17 +29,28 @@ class _ItemRow:
         self.frame = tk.Frame(parent, bg=COLORS["card_bg2"])
         self.frame.pack(fill="x", pady=2, padx=4)
         self._cloth_types = cloth_types  # keep reference for autocomplete
+        self._ac_popup    = None          # floating autocomplete Toplevel
+        self._ac_lb       = None          # Listbox inside popup
 
-        # Cloth type — free text entry with autocomplete dropdown
+        # Cloth type — plain Entry with floating autocomplete popup
         self._cloth_var = tk.StringVar()
-        self._cloth_cb  = ttk.Combobox(
-            self.frame, textvariable=self._cloth_var,
-            values=cloth_types, width=18
+        self._cloth_entry = tk.Entry(
+            self.frame, textvariable=self._cloth_var, width=30,
+            bg=COLORS["input_bg"], fg=COLORS["text"],
+            insertbackground=COLORS["text"], relief="flat",
+            highlightthickness=1, highlightbackground=COLORS["border2"],
+            highlightcolor=COLORS["accent"], font=FONTS["default"]
         )
-        self._cloth_cb.grid(row=0, column=0, padx=(4, 6), pady=5, sticky="w")
+        self._cloth_entry.grid(row=0, column=0, padx=(4, 6), pady=5, sticky="w")
+        # Keep a reference so refresh() can update values
+        self._cloth_cb = self._cloth_entry
         # Trigger autocomplete on every keystroke
         self._cloth_var.trace_add("write", lambda *a: self._on_cloth_type())
-        self._cloth_cb.bind("<<ComboboxSelected>>", lambda e: self._on_cloth_select())
+        self._cloth_entry.bind("<FocusOut>",   lambda e: self.frame.after(150, self._hide_popup))
+        self._cloth_entry.bind("<Escape>",     lambda e: self._hide_popup())
+        self._cloth_entry.bind("<Return>",     lambda e: self._pick_first())
+        self._cloth_entry.bind("<Tab>",        lambda e: self._pick_first())
+        self._cloth_entry.bind("<Down>",       lambda e: self._focus_popup())
 
         # Quantity with up/down spin arrows
         self._qty_var = tk.StringVar(value="1")
@@ -99,30 +110,107 @@ class _ItemRow:
         self._on_change = on_change
         self._updating  = False  # guard against recursive trace calls
 
+    # ── Autocomplete popup helpers ─────────────────────────────────────────
+
+    def _show_popup(self, matches):
+        """Create or update the floating autocomplete listbox."""
+        entry = self._cloth_entry
+        entry.update_idletasks()
+        x = entry.winfo_rootx()
+        y = entry.winfo_rooty() + entry.winfo_height()
+        w = entry.winfo_width()
+
+        if self._ac_popup is None or not self._ac_popup.winfo_exists():
+            self._ac_popup = tk.Toplevel(entry)
+            self._ac_popup.wm_overrideredirect(True)   # no title bar
+            self._ac_popup.wm_attributes("-topmost", True)
+            frm = tk.Frame(self._ac_popup,
+                           bg=COLORS["border2"], bd=1, relief="solid")
+            frm.pack(fill="both", expand=True)
+            sb = tk.Scrollbar(frm, orient="vertical")
+            self._ac_lb = tk.Listbox(
+                frm, yscrollcommand=sb.set,
+                bg=COLORS["input_bg"], fg=COLORS["text"],
+                selectbackground=COLORS["accent"],
+                selectforeground=COLORS["card_bg"],
+                font=FONTS["default"],
+                relief="flat", bd=0, activestyle="none",
+                highlightthickness=0,
+            )
+            sb.config(command=self._ac_lb.yview)
+            self._ac_lb.pack(side="left", fill="both", expand=True)
+            sb.pack(side="right", fill="y")
+            self._ac_lb.bind("<ButtonRelease-1>", lambda e: self._pick_from_popup())
+            self._ac_lb.bind("<Return>",          lambda e: self._pick_from_popup())
+
+        # Populate
+        self._ac_lb.delete(0, "end")
+        for m in matches:
+            self._ac_lb.insert("end", m)
+        rows = min(len(matches), 6)
+        self._ac_lb.config(height=rows)
+        self._ac_popup.geometry(f"{w}x{rows * 20 + 4}+{x}+{y}")
+        self._ac_popup.deiconify()
+
+    def _hide_popup(self):
+        if self._ac_popup and self._ac_popup.winfo_exists():
+            self._ac_popup.withdraw()
+
+    def _focus_popup(self):
+        """Move keyboard focus into the popup listbox."""
+        if self._ac_lb and self._ac_lb.winfo_exists():
+            self._ac_lb.focus_set()
+            if self._ac_lb.size() > 0:
+                self._ac_lb.selection_set(0)
+                self._ac_lb.activate(0)
+
+    def _pick_from_popup(self):
+        sel = self._ac_lb.curselection()
+        if sel:
+            value = self._ac_lb.get(sel[0])
+            self._updating = True
+            self._cloth_var.set(value)
+            self._updating = False
+            self._autofill_price(value)
+        self._hide_popup()
+        self._cloth_entry.focus_set()
+
+    def _pick_first(self):
+        """Select the first suggestion if popup is visible."""
+        if (self._ac_popup and self._ac_popup.winfo_exists()
+                and self._ac_lb.size() > 0):
+            value = self._ac_lb.get(0)
+            self._updating = True
+            self._cloth_var.set(value)
+            self._updating = False
+            self._autofill_price(value)
+            self._hide_popup()
+
+    def _autofill_price(self, cloth: str):
+        price = db.get_price(cloth)
+        self._updating = True
+        self._price_var.set(f"{price:.2f}")
+        self._updating = False
+        self._on_change()
+
+    # ── Cloth-type trace ──────────────────────────────────────────────────
+
     def _on_cloth_type(self):
-        """Called on every keystroke — filter dropdown + autofill price."""
+        """Called on every keystroke — filter popup + autofill price."""
         if self._updating:
             return
         typed = self._cloth_var.get()
-        # Filter suggestions (case-insensitive prefix/substring match)
         matches = [ct for ct in self._cloth_types
                    if typed.lower() in ct.lower()]
-        self._cloth_cb["values"] = matches if matches else self._cloth_types
+        if matches and typed:
+            self._show_popup(matches)
+        else:
+            self._hide_popup()
         # Autofill price on exact match
         for ct in self._cloth_types:
             if ct.lower() == typed.lower():
-                price = db.get_price(ct)
-                self._updating = True
-                self._price_var.set(f"{price:.2f}")
-                self._updating = False
-                self._on_change()
+                self._autofill_price(ct)
                 break
-
-    def _on_cloth_select(self):
-        """Called when user picks from the dropdown list."""
-        cloth = self._cloth_var.get()
-        price = db.get_price(cloth)
-        self._price_var.set(f"{price:.2f}")
 
     def calculate(self) -> float:
         """Calculate subtotal, update label, return value."""
@@ -151,7 +239,9 @@ class _ItemRow:
         }
 
     def set_data(self, cloth_type, quantity, price_per_unit, item_notes=""):
+        self._updating = True
         self._cloth_var.set(cloth_type)
+        self._updating = False
         self._qty_var.set(str(quantity))
         self._price_var.set(f"{price_per_unit:.2f}")
         self._notes_var.set(item_notes)
@@ -162,6 +252,7 @@ class _ItemRow:
         return bool(d["cloth_type"]) and d["quantity"] > 0 and d["price_per_unit"] > 0
 
     def destroy(self):
+        self._hide_popup()
         self.frame.destroy()
 
 
@@ -599,15 +690,16 @@ class NewOrderFrame(tk.Frame):
     def refresh(self):
         """Called when this frame is shown — reload cloth types."""
         self._cloth_types = db.get_cloth_types()
-        # Update existing comboboxes
+        # Push updated list to each existing row's autocomplete
         for row in self._item_rows:
             try:
-                row._cloth_cb["values"] = self._cloth_types
+                row._cloth_types = self._cloth_types
             except Exception:
                 pass
         # Add first empty row if none exist
         if not self._item_rows:
             self._add_item_row()
+
 
 
 def _parse_date(s):
