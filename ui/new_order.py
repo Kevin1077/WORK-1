@@ -140,16 +140,19 @@ class _ItemRow:
             sb.config(command=self._ac_lb.yview)
             self._ac_lb.pack(side="left", fill="both", expand=True)
             sb.pack(side="right", fill="y")
-            self._ac_lb.bind("<ButtonRelease-1>", lambda e: self._pick_from_popup())
-            self._ac_lb.bind("<Return>",          lambda e: self._pick_from_popup())
+            # Use Button-1 (mouse press) so curselection() is already set
+            self._ac_lb.bind("<Button-1>",  lambda e: self._ac_lb.after(10, self._pick_from_popup))
+            self._ac_lb.bind("<Return>",     lambda e: self._pick_from_popup())
 
         # Populate
         self._ac_lb.delete(0, "end")
         for m in matches:
             self._ac_lb.insert("end", m)
-        rows = min(len(matches), 6)
-        self._ac_lb.config(height=rows)
-        self._ac_popup.geometry(f"{w}x{rows * 20 + 4}+{x}+{y}")
+        visible_rows = min(len(matches), 8)   # show up to 8, scroll for more
+        row_px = 22                             # pixels per row
+        popup_h = visible_rows * row_px + 4
+        self._ac_lb.config(height=visible_rows)
+        self._ac_popup.geometry(f"{w}x{popup_h}+{x}+{y}")
         self._ac_popup.deiconify()
 
     def _hide_popup(self):

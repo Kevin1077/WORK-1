@@ -128,7 +128,7 @@ def _draw_slip(c: canvas.Canvas,
 
     # Branch name ─────────────────────────────────────────────────────────
     FHB, SHB = "Helvetica-Bold", 9
-    y -= 3.5 * mm
+    y -= 5 * mm   # place branch name ~0.5 cm below top margin
     c.setFont(FHB, SHB)
     c.drawCentredString(cx, y, _fit(BRANCH_NAME, FHB, SHB, USABLE))
 
@@ -162,7 +162,7 @@ def _draw_slip(c: canvas.Canvas,
 
     def row(value: str) -> None:
         nonlocal y
-        y -= 3.2 * mm
+        y -= 2.8 * mm
         if y < MARGIN:          # safety: stop if we'd go below bottom margin
             return
         c.setFont(FV, ST)
@@ -380,8 +380,8 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             img = Image.new("RGB", (w, h), (255, 255, 255))
             draw = ImageDraw.Draw(img)
 
-            # Header
-            pad_top = int(22 * scale)
+            # Header — branch name 0.5 cm below the top of the label
+            pad_top = int(168 * scale)  # ~15 mm (1.5 cm) at 300 DPI
             draw.text((w // 2, pad_top), BRANCH_NAME, fill=(0, 0, 0), font=font_title, anchor="mm")
             line1_y = pad_top + int(16 * scale)
             draw.line([(25, line1_y), (w - 25, line1_y)], fill=(0, 0, 0), width=2)

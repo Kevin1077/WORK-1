@@ -406,16 +406,32 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     # ── 1. Digital Header (in top 0–673px zone) ──────────────────────────────
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     logo_candidates = [
-        os.path.join(base_dir, "assets", "etoffe_logo_color_transparent.png"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "etoffe_logo_color_transparent.png"),
-        os.path.join("assets", "etoffe_logo_color_transparent.png"),
-        os.path.abspath("assets/etoffe_logo_color_transparent.png"),
+        os.path.join(base_dir, "assets", "logo.png"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png"),
+        os.path.join("assets", "logo.png"),
+        os.path.abspath("assets/logo.png"),
     ]
     logo_img = None
     for cand in logo_candidates:
         if cand and os.path.exists(cand):
             try:
-                logo_img = Image.open(cand).convert("RGBA")
+                raw_img = Image.open(cand).convert("RGBA")
+                data = raw_img.getdata()
+                new_data = []
+                has_opaque_white = False
+                for item in data:
+                    if item[0] > 235 and item[1] > 235 and item[2] > 235:
+                        new_data.append((255, 255, 255, 0))
+                        has_opaque_white = True
+                    else:
+                        new_data.append(item)
+                if has_opaque_white:
+                    raw_img.putdata(new_data)
+                bbox = raw_img.getbbox()
+                if bbox:
+                    logo_img = raw_img.crop(bbox)
+                else:
+                    logo_img = raw_img
                 break
             except Exception:
                 pass
@@ -428,31 +444,20 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     left_half_mid = ml + (content_w // 4)        # Midpoint of left half
     right_half_mid = ml + 3 * (content_w // 4)    # Midpoint of right half
 
-    target_logo_w = 660
-    logo_badge_center_y = header_mid + 185  # fallback if logo image is missing
+    target_logo_w = 480
+    target_logo_h = 300
+    logo_center_y = header_mid
     if logo_img:
-        ratio = target_logo_w / logo_img.width
-        target_logo_h = int(logo_img.height * ratio)
-        max_logo_h = 490
-        if target_logo_h > max_logo_h:
-            ratio = max_logo_h / logo_img.height
-            target_logo_h = max_logo_h
-            target_logo_w = int(logo_img.width * ratio)
         logo_resized = logo_img.resize((target_logo_w, target_logo_h), Image.Resampling.LANCZOS)
         logo_x = left_half_mid - (target_logo_w // 2)
         logo_y = header_mid - (target_logo_h // 2)
-        img.paste(logo_resized, (logo_x, logo_y), mask=logo_resized.split()[3])
-
-        # Vertical center of the "DRY CLEAN | LAUNDRY" badge
-        # In the original 1024x725 asset, the badge spans rows 619 to 680 (center ~649.5)
-        badge_top_orig, badge_bottom_orig = 619, 680
-        logo_badge_center_y = logo_y + int(((badge_top_orig + badge_bottom_orig) / 2) * ratio)
+        img.paste(logo_resized, (logo_x, logo_y), mask=logo_resized.split()[3] if logo_resized.mode == "RGBA" else None)
+        logo_center_y = logo_y + (target_logo_h // 2)
     else:
         f_brand = _get_font(42, bold=True)
         draw.text((left_half_mid, header_mid - 25), "ÉTOFFE LAUNDRY", fill=(0, 0, 0), font=f_brand, anchor="mt")
 
-    # Address block: 4 lines, horizontally centered in the right half.
-    # The 4th line ("Mob:9846593957") aligns vertically with the "DRY CLEAN | LAUNDRY" badge.
+    # Address block: 4 lines, horizontally centered in the right half, vertically centered with header/logo
     addr_lines = [
         "Opp.St.Marys Church Lalam(Old)",
         "Bypass Road",
@@ -463,9 +468,10 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     cx_addr = right_half_mid
     addr_lh = 60
     n = len(addr_lines)
+    addr_start_y = logo_center_y - int(((n - 1) * addr_lh) / 2)
 
     for i, line in enumerate(addr_lines):
-        line_center_y = logo_badge_center_y - (n - 1 - i) * addr_lh
+        line_center_y = addr_start_y + i * addr_lh
         draw.text((cx_addr, line_center_y), line, fill=(0, 0, 0), font=font_addr, anchor="mm")
 
     # Thin horizontal rule at the bottom of header zone

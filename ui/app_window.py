@@ -10,6 +10,16 @@ from PIL import Image, ImageTk
 
 from ui.theme import COLORS, FONTS, SHOP_NAME, SHOP_TAGLINE
 
+from ui.dashboard import DashboardFrame
+from ui.new_order import NewOrderFrame
+from ui.search_orders import SearchOrdersFrame
+from ui.date_records import DateRecordsFrame
+from ui.progress import ProgressFrame
+from ui.all_orders import AllOrdersFrame
+from ui.customers import CustomersFrame
+from ui.price_list import PriceListFrame
+from ui.print_settings import PrintSettingsFrame
+
 
 class AppWindow:
     def __init__(self, root: tk.Tk):
@@ -146,9 +156,30 @@ class AppWindow:
             if cand and os.path.exists(cand):
                 try:
                     src_img = Image.open(cand).convert("RGBA")
+                    data = src_img.getdata()
+                    new_data = []
+                    has_opaque_white = False
+                    for item in data:
+                        if item[0] > 235 and item[1] > 235 and item[2] > 235:
+                            new_data.append((255, 255, 255, 0))
+                            has_opaque_white = True
+                        else:
+                            new_data.append(item)
+                    if has_opaque_white:
+                        src_img.putdata(new_data)
+                    bbox = src_img.getbbox()
+                    if bbox:
+                        src_img = src_img.crop(bbox)
+
                     target_w = 170
                     ratio = target_w / src_img.width
                     target_h = int(src_img.height * ratio)
+                    max_h = 100
+                    if target_h > max_h:
+                        ratio = max_h / src_img.height
+                        target_h = max_h
+                        target_w = int(src_img.width * ratio)
+
                     resized = src_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
                     # Composite smoothly onto sidebar background color
                     sb_hex = COLORS["sidebar_bg"].lstrip("#")
@@ -271,15 +302,15 @@ class AppWindow:
     def _create_frames(self):
         self.frames = {}
         self._frame_factories = {
-            "dashboard":      lambda: __import__("ui.dashboard", fromlist=["DashboardFrame"]).DashboardFrame(self.content, self),
-            "new_order":      lambda: __import__("ui.new_order", fromlist=["NewOrderFrame"]).NewOrderFrame(self.content, self),
-            "search":         lambda: __import__("ui.search_orders", fromlist=["SearchOrdersFrame"]).SearchOrdersFrame(self.content, self),
-            "date_records":   lambda: __import__("ui.date_records", fromlist=["DateRecordsFrame"]).DateRecordsFrame(self.content, self),
-            "progress":       lambda: __import__("ui.progress", fromlist=["ProgressFrame"]).ProgressFrame(self.content, self),
-            "all_orders":     lambda: __import__("ui.all_orders", fromlist=["AllOrdersFrame"]).AllOrdersFrame(self.content, self),
-            "customers":      lambda: __import__("ui.customers", fromlist=["CustomersFrame"]).CustomersFrame(self.content, self),
-            "price_list":     lambda: __import__("ui.price_list", fromlist=["PriceListFrame"]).PriceListFrame(self.content, self),
-            "print_settings": lambda: __import__("ui.print_settings", fromlist=["PrintSettingsFrame"]).PrintSettingsFrame(self.content, self),
+            "dashboard":      lambda: DashboardFrame(self.content, self),
+            "new_order":      lambda: NewOrderFrame(self.content, self),
+            "search":         lambda: SearchOrdersFrame(self.content, self),
+            "date_records":   lambda: DateRecordsFrame(self.content, self),
+            "progress":       lambda: ProgressFrame(self.content, self),
+            "all_orders":     lambda: AllOrdersFrame(self.content, self),
+            "customers":      lambda: CustomersFrame(self.content, self),
+            "price_list":     lambda: PriceListFrame(self.content, self),
+            "print_settings": lambda: PrintSettingsFrame(self.content, self),        
         }
 
     def show_frame(self, name: str):
