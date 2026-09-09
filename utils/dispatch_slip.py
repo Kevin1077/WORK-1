@@ -111,7 +111,8 @@ def _draw_slip(c: canvas.Canvas,
     Coordinate origin = bottom-left, y increases upward.
 
     Portrait layout (* denotes centred):
-        *  ÉTOFFE LAUNDRY STUDIO
+        *  ÉTOFFE
+        *  LAUNDRY STUDIO
         ──────────────────────────────
         *        [BARCODE]
         *      P{id}-{n}
@@ -126,11 +127,13 @@ def _draw_slip(c: canvas.Canvas,
     # ── start y cursor at top-inside-margin ──────────────────────────────
     y = PAGE_H - MARGIN
 
-    # Branch name ─────────────────────────────────────────────────────────
-    FHB, SHB = "Helvetica-Bold", 9
-    y -= 5 * mm   # place branch name ~0.5 cm below top margin
+    # Branch name (two lines) ─────────────────────────────────────────────
+    FHB, SHB = "Helvetica-Bold", 10
+    y -= 4.5 * mm   # place top line of branch name below top margin
     c.setFont(FHB, SHB)
-    c.drawCentredString(cx, y, _fit(BRANCH_NAME, FHB, SHB, USABLE))
+    c.drawCentredString(cx, y, _fit("ÉTOFFE", FHB, SHB, USABLE))
+    y -= 3.6 * mm   # second line
+    c.drawCentredString(cx, y, _fit("LAUNDRY STUDIO", FHB, SHB, USABLE))
 
     # HR ──────────────────────────────────────────────────────────────────
     y -= 2 * mm
@@ -168,7 +171,7 @@ def _draw_slip(c: canvas.Canvas,
         c.setFont(FV, ST)
         c.drawString(left, y, _fit(value, FV, ST, USABLE))
 
-    row(cust_name)
+    row(cust_name.upper())
     for line in _wrap_item_text_pdf(item_desc, FV, ST, USABLE):
         row(line)
 
@@ -184,7 +187,7 @@ def generate_dispatch_slip(order_data: dict, output_path: str = None) -> str:
 
     items          = order_data.get("items", [])
     total_garments = sum(max(1, int(i.get("quantity", 1))) for i in items) or 1
-    cust_name      = order_data.get("name", "—")
+    cust_name      = order_data.get("name", "—").upper()
     order_notes    = order_data.get("notes", "").strip()
 
     garment_counter = 0
@@ -327,7 +330,7 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
     order_id       = order_data.get("order_id", 0)
     items          = order_data.get("items", [])
     total_garments = sum(max(1, int(i.get("quantity", 1))) for i in items) or 1
-    cust_name      = order_data.get("name", "—")
+    cust_name      = order_data.get("name", "—").upper()
     order_notes    = order_data.get("notes", "").strip()
 
     garment_counter = 0
@@ -351,7 +354,7 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
         w, h = 413, 472
 
     scale = min(1.0, h / 450.0)
-    s_title = max(18, int(24 * scale))
+    s_title = max(19, int(25 * scale))
     s_bold  = max(26, int(34 * scale))
     s_code  = max(26, int(34 * scale))
     s_rmk   = max(18, int(24 * scale))
@@ -380,10 +383,12 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             img = Image.new("RGB", (w, h), (255, 255, 255))
             draw = ImageDraw.Draw(img)
 
-            # Header — branch name 0.5 cm below the top of the label
+            # Header — branch name (two lines, centered)
             pad_top = int(168 * scale)  # ~15 mm (1.5 cm) at 300 DPI
-            draw.text((w // 2, pad_top), BRANCH_NAME, fill=(0, 0, 0), font=font_title, anchor="mm")
-            line1_y = pad_top + int(16 * scale)
+            title_gap = int(26 * scale)
+            draw.text((w // 2, pad_top), "ÉTOFFE", fill=(0, 0, 0), font=font_title, anchor="mm")
+            draw.text((w // 2, pad_top + title_gap), "LAUNDRY STUDIO", fill=(0, 0, 0), font=font_title, anchor="mm")
+            line1_y = pad_top + title_gap + int(16 * scale)
             draw.line([(25, line1_y), (w - 25, line1_y)], fill=(0, 0, 0), width=2)
 
             # Barcode
@@ -410,7 +415,7 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             max_text_w = w - (2 * margin_x)
             y_pos = line2_y + int(14 * scale)
 
-            cust_line = _fit_image_text(draw, cust_name, font_bold, max_text_w)
+            cust_line = _fit_image_text(draw, cust_name.upper(), font_bold, max_text_w)
             draw.text((margin_x, y_pos), cust_line, fill=(0, 0, 0), font=font_bold)
             y_pos += int(36 * scale)
 
