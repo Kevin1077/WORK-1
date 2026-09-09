@@ -31,6 +31,7 @@ class _ItemRow:
         self._cloth_types = cloth_types  # keep reference for autocomplete
         self._ac_popup    = None          # floating autocomplete Toplevel
         self._ac_lb       = None          # Listbox inside popup
+        self._hide_job    = None          # pending after() ID for hiding popup
 
         # Cloth type — plain Entry with floating autocomplete popup
         self._cloth_var = tk.StringVar()
@@ -46,7 +47,8 @@ class _ItemRow:
         self._cloth_cb = self._cloth_entry
         # Trigger autocomplete on every keystroke
         self._cloth_var.trace_add("write", lambda *a: self._on_cloth_type())
-        self._cloth_entry.bind("<FocusOut>",   lambda e: self.frame.after(150, self._hide_popup))
+        self._cloth_entry.bind("<FocusIn>",    lambda e: self._cancel_hide())
+        self._cloth_entry.bind("<FocusOut>",   lambda e: self._schedule_hide())
         self._cloth_entry.bind("<Escape>",     lambda e: self._hide_popup())
         self._cloth_entry.bind("<Return>",     lambda e: self._pick_first())
         self._cloth_entry.bind("<Tab>",        lambda e: self._pick_first())
@@ -112,6 +114,40 @@ class _ItemRow:
 
     # ── Autocomplete popup helpers ─────────────────────────────────────────
 
+    def _cancel_hide(self):
+        if self._hide_job is not None:
+            try:
+                self.frame.after_cancel(self._hide_job)
+            except Exception:
+                pass
+            self._hide_job = None
+
+    def _schedule_hide(self):
+        self._cancel_hide()
+        self._hide_job = self.frame.after(150, self._hide_popup_if_focus_lost)
+
+    def _is_focus_inside(self):
+        try:
+            focused = self.frame.focus_get()
+            if not focused:
+                return False
+            if focused in (self._cloth_entry, self._ac_lb):
+                return True
+            if self._ac_popup and self._ac_popup.winfo_exists():
+                w = focused
+                while w:
+                    if w == self._ac_popup:
+                        return True
+                    w = getattr(w, "master", None)
+        except Exception:
+            pass
+        return False
+
+    def _hide_popup_if_focus_lost(self):
+        self._hide_job = None
+        if not self._is_focus_inside():
+            self._hide_popup()
+
     def _show_popup(self, matches):
         """Create or update the floating autocomplete listbox."""
         entry = self._cloth_entry
@@ -142,7 +178,10 @@ class _ItemRow:
             sb.pack(side="right", fill="y")
             # Use Button-1 (mouse press) so curselection() is already set
             self._ac_lb.bind("<Button-1>",  lambda e: self._ac_lb.after(10, self._pick_from_popup))
-            self._ac_lb.bind("<Return>",     lambda e: self._pick_from_popup())
+            self._ac_lb.bind("<Return>",    lambda e: self._pick_from_popup())
+            self._ac_lb.bind("<FocusIn>",   lambda e: self._cancel_hide())
+            self._ac_lb.bind("<FocusOut>",  lambda e: self._schedule_hide())
+            self._ac_lb.bind("<Escape>",    lambda e: self._on_popup_escape())
 
         # Populate
         self._ac_lb.delete(0, "end")
@@ -156,32 +195,51 @@ class _ItemRow:
         self._ac_popup.deiconify()
 
     def _hide_popup(self):
+        self._cancel_hide()
         if self._ac_popup and self._ac_popup.winfo_exists():
             self._ac_popup.withdraw()
 
-    def _focus_popup(self):
-        """Move keyboard focus into the popup listbox."""
-        if self._ac_lb and self._ac_lb.winfo_exists():
-            self._ac_lb.focus_set()
-            if self._ac_lb.size() > 0:
-                self._ac_lb.selection_set(0)
-                self._ac_lb.activate(0)
-
-    def _pick_from_popup(self):
-        sel = self._ac_lb.curselection()
-        if sel:
-            value = self._ac_lb.get(sel[0])
-            self._updating = True
-            self._cloth_var.set(value)
-            self._updating = False
-            self._autofill_price(value)
+    def _on_popup_escape(self):
         self._hide_popup()
         self._cloth_entry.focus_set()
+
+    def _focus_popup(self):
+        """Move keyboard focus into the popup listbox."""
+        self._cancel_hide()
+        if (self._ac_popup and self._ac_popup.winfo_exists()
+                and self._ac_popup.state() != "withdrawn"
+                and self._ac_lb and self._ac_lb.winfo_exists()):
+            self._ac_lb.focus_set()
+            if self._ac_lb.size() > 0:
+                self._ac_lb.selection_clear(0, "end")
+                self._ac_lb.selection_set(0)
+                self._ac_lb.activate(0)
+                self._ac_lb.see(0)
+            return "break"
+
+    def _pick_from_popup(self):
+        self._cancel_hide()
+        if self._ac_lb and self._ac_lb.winfo_exists():
+            sel = self._ac_lb.curselection()
+            if not sel and self._ac_lb.size() > 0:
+                active = self._ac_lb.index("active")
+                if active is not None and 0 <= active < self._ac_lb.size():
+                    sel = (active,)
+            if sel:
+                value = self._ac_lb.get(sel[0])
+                self._updating = True
+                self._cloth_var.set(value)
+                self._updating = False
+                self._autofill_price(value)
+        self._hide_popup()
+        self._cloth_entry.focus_set()
+        return "break"
 
     def _pick_first(self):
         """Select the first suggestion if popup is visible."""
         if (self._ac_popup and self._ac_popup.winfo_exists()
-                and self._ac_lb.size() > 0):
+                and self._ac_popup.state() != "withdrawn"
+                and self._ac_lb and self._ac_lb.size() > 0):
             value = self._ac_lb.get(0)
             self._updating = True
             self._cloth_var.set(value)
@@ -255,7 +313,15 @@ class _ItemRow:
         return bool(d["cloth_type"]) and d["quantity"] > 0 and d["price_per_unit"] > 0
 
     def destroy(self):
+        self._cancel_hide()
         self._hide_popup()
+        if self._ac_popup and self._ac_popup.winfo_exists():
+            try:
+                self._ac_popup.destroy()
+            except Exception:
+                pass
+            self._ac_popup = None
+            self._ac_lb = None
         self.frame.destroy()
 
 
