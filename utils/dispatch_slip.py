@@ -384,7 +384,7 @@ def generate_dispatch_slip_images(order_data: dict) -> list[str]:
             draw = ImageDraw.Draw(img)
 
             # Header — branch name (two lines, centered)
-            pad_top = int(168 * scale)  # ~15 mm (1.5 cm) at 300 DPI
+            pad_top = int(144 * scale)  # ~13 mm (1.3 cm) at 300 DPI (reduced by 0.2 cm)
             title_gap = int(26 * scale)
             draw.text((w // 2, pad_top), "ÉTOFFE", fill=(0, 0, 0), font=font_title, anchor="mm")
             draw.text((w // 2, pad_top + title_gap), "LAUNDRY STUDIO", fill=(0, 0, 0), font=font_title, anchor="mm")
