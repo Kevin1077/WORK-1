@@ -15,6 +15,62 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+FONT_REGULAR = "Helvetica"
+FONT_BOLD = "Helvetica-Bold"
+
+
+def _init_fonts():
+    global FONT_REGULAR, FONT_BOLD
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    fonts_dir = os.path.join(base_dir, "assets", "fonts")
+    regular_path = os.path.join(fonts_dir, "DejaVuSans.ttf")
+    bold_path = os.path.join(fonts_dir, "DejaVuSans-Bold.ttf")
+    oblique_path = os.path.join(fonts_dir, "DejaVuSans-Oblique.ttf")
+    bold_oblique_path = os.path.join(fonts_dir, "DejaVuSans-BoldOblique.ttf")
+
+    if os.path.exists(regular_path):
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVuSans", regular_path))
+            FONT_REGULAR = "DejaVuSans"
+        except Exception:
+            pass
+
+    if os.path.exists(bold_path):
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", bold_path))
+            FONT_BOLD = "DejaVuSans-Bold"
+        except Exception:
+            pass
+
+    if os.path.exists(oblique_path):
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVuSans-Oblique", oblique_path))
+        except Exception:
+            pass
+
+    if os.path.exists(bold_oblique_path):
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVuSans-BoldOblique", bold_oblique_path))
+        except Exception:
+            pass
+
+    if FONT_REGULAR == "DejaVuSans" and FONT_BOLD == "DejaVuSans-Bold":
+        try:
+            pdfmetrics.registerFontFamily(
+                "DejaVuSans",
+                normal="DejaVuSans",
+                bold="DejaVuSans-Bold",
+                italic="DejaVuSans-Oblique" if os.path.exists(oblique_path) else "DejaVuSans",
+                boldItalic="DejaVuSans-BoldOblique" if os.path.exists(bold_oblique_path) else "DejaVuSans-Bold",
+            )
+        except Exception:
+            pass
+
+
+_init_fonts()
 
 
 def generate_date_report(rows: list, from_date: str, to_date: str, output_path: str = None) -> str:
@@ -23,6 +79,8 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
     rows: list of dicts with keys: order_id, order_date, name, phone, total_amount, status, payment_method
     Returns path to the generated PDF.
     """
+    _init_fonts()
+
     if output_path is None:
         tmp = tempfile.gettempdir()
         output_path = os.path.join(tmp, f"victory_report_{from_date}_to_{to_date}.pdf")
@@ -36,15 +94,15 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
 
     # Styles
     title_style = ParagraphStyle(
-        "title", fontSize=16, fontName="Helvetica-Bold",
+        "title", fontSize=16, fontName=FONT_BOLD,
         alignment=TA_CENTER, textColor=colors.black, spaceAfter=4
     )
     subtitle_style = ParagraphStyle(
-        "subtitle", fontSize=10, fontName="Helvetica",
+        "subtitle", fontSize=10, fontName=FONT_REGULAR,
         alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
     )
     footer_style = ParagraphStyle(
-        "footer", fontSize=9, fontName="Helvetica",
+        "footer", fontSize=9, fontName=FONT_REGULAR,
         alignment=TA_LEFT, textColor=colors.black
     )
 
@@ -101,17 +159,17 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
         # Header
         ("BACKGROUND", (0, 0), (-1, 0), colors.black),
         ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME",   (0, 0), (-1, 0), FONT_BOLD),
         ("FONTSIZE",   (0, 0), (-1, 0), 9),
         # Data rows
         ("FONTSIZE",   (0, 1), (-1, -2), 8.5),
-        ("FONTNAME",   (0, 1), (-1, -2), "Helvetica"),
+        ("FONTNAME",   (0, 1), (-1, -2), FONT_REGULAR),
         ("TEXTCOLOR",  (0, 1), (-1, -2), colors.black),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f0f0f0")]),
         # Summary row
         ("BACKGROUND", (0, -1), (-1, -1), colors.black),
         ("TEXTCOLOR",  (0, -1), (-1, -1), colors.white),
-        ("FONTNAME",   (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTNAME",   (0, -1), (-1, -1), FONT_BOLD),
         ("FONTSIZE",   (0, -1), (-1, -1), 9),
         # Alignment
         ("ALIGN", (0, 0), (0, -1), "CENTER"),   # S.No
@@ -145,6 +203,8 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
     For item_status mode, rows have: order_id, order_date, name, phone, status, cloth_type, unit_number
     For other modes, rows have the standard order dict keys.
     """
+    _init_fonts()
+
     if output_path is None:
         tmp = tempfile.gettempdir()
         safe = "".join(c if c.isalnum() or c in "._- " else "_" for c in query_desc)[:40]
@@ -158,11 +218,11 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
     )
 
     title_style = ParagraphStyle(
-        "title", fontSize=16, fontName="Helvetica-Bold",
+        "title", fontSize=16, fontName=FONT_BOLD,
         alignment=TA_CENTER, textColor=colors.black, spaceAfter=4
     )
     subtitle_style = ParagraphStyle(
-        "subtitle", fontSize=10, fontName="Helvetica",
+        "subtitle", fontSize=10, fontName=FONT_REGULAR,
         alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
     )
 
@@ -218,18 +278,19 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.black),
         ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME",   (0, 0), (-1, 0), FONT_BOLD),
         ("FONTSIZE",   (0, 0), (-1, 0), 9),
         ("FONTSIZE",   (0, 1), (-1, -2), 8.5),
-        ("FONTNAME",   (0, 1), (-1, -2), "Helvetica"),
+        ("FONTNAME",   (0, 1), (-1, -2), FONT_REGULAR),
         ("TEXTCOLOR",  (0, 1), (-1, -2), colors.black),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f0f0f0")]),
         ("BACKGROUND", (0, -1), (-1, -1), colors.black),
         ("TEXTCOLOR",  (0, -1), (-1, -1), colors.white),
-        ("FONTNAME",   (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTNAME",   (0, -1), (-1, -1), FONT_BOLD),
         ("FONTSIZE",   (0, -1), (-1, -1), 9),
         ("ALIGN", (0, 0), (0, -1), "CENTER"),
         ("ALIGN", (1, 0), (1, -1), "CENTER"),
+        ("ALIGN", (5, 0), (5, -1), "RIGHT") if mode != "item_status" else ("ALIGN", (0, 0), (0, 0), "CENTER"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
         ("TOPPADDING",    (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
