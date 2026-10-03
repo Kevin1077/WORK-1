@@ -8,10 +8,14 @@ Uses a persistent browser profile so the QR code login is only needed once.
 from __future__ import annotations
 
 import logging
+import queue
 import re
+import threading
 import time
 import urllib.parse
 from pathlib import Path
+import os
+import sys
 
 LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +114,51 @@ def _validate_image(image_path: str) -> Path:
 _context = None   # playwright BrowserContext (persistent)
 _playwright = None
 
+_pw_task_q: queue.Queue = queue.Queue()
+_pw_worker: threading.Thread | None = None
+_pw_worker_lock = threading.Lock()
+
+def _pw_worker_loop() -> None:
+    while True:
+        result_q, fn, args, kwargs = _pw_task_q.get()
+        try:
+            result_q.put((None, fn(*args, **kwargs)))
+        except Exception as exc:  # noqa: BLE001
+            result_q.put((exc, None))
+
+def _ensure_pw_worker() -> None:
+    global _pw_worker
+    with _pw_worker_lock:
+        if _pw_worker is None or not _pw_worker.is_alive():
+            _pw_worker = threading.Thread(target=_pw_worker_loop, daemon=True)
+            _pw_worker.start()
+
+def _run_pw(fn, *args, **kwargs):
+    _ensure_pw_worker()
+    result_q: queue.Queue = queue.Queue()
+    _pw_task_q.put((result_q, fn, args, kwargs))
+    exc, result = result_q.get()
+    if exc is not None:
+        raise exc
+    return result
+
+
+def _get_bundled_chromium_path():
+    """Return the bundled Chromium executable when running from PyInstaller."""
+    if getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(sys.executable)
+        chromium = os.path.join(
+            base_dir,
+            "_internal",
+            "chromium",
+            "chrome-win64",
+            "chrome.exe",
+        )
+
+        if os.path.exists(chromium):
+            return chromium
+
+    return None
 
 def _get_context():
     """Return (or create) the long-lived persistent Playwright context."""
@@ -118,20 +167,26 @@ def _get_context():
     if _context is not None:
         try:
             if not _context.is_closed():
-                _ = _context.pages  # raises if the browser process has died
                 return _context
             else:
-                LOGGER.debug("Previous browser context was closed â€” restarting driver.")
+                LOGGER.debug(
+                    "Previous browser context was closed — restarting driver."
+                )
                 _context = None
+
                 if _playwright is not None:
                     try:
                         _playwright.stop()
                     except Exception:
                         pass
                     _playwright = None
+
         except Exception:
-            LOGGER.debug("Previous browser context is dead â€” restarting driver.")
+            LOGGER.debug(
+                "Previous browser context is dead — restarting driver."
+            )
             _context = None
+
             if _playwright is not None:
                 try:
                     _playwright.stop()
@@ -149,7 +204,10 @@ def _get_context():
         ) from exc
 
     _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    LOGGER.info("Launching persistent profile at %s", _PROFILE_DIR)
+    LOGGER.info(
+        "Launching persistent profile at %s",
+        _PROFILE_DIR
+    )
 
     if _playwright is None:
         _playwright = sync_playwright().start()
@@ -168,32 +226,68 @@ def _get_context():
     }
 
     try:
+        # First try the user's installed Google Chrome.
         try:
             ctx = _playwright.chromium.launch_persistent_context(
                 channel="chrome",
                 **launch_args
             )
+
         except Exception:
-            LOGGER.info("System Chrome launch failed, using bundled Chromium.")
-            ctx = _playwright.chromium.launch_persistent_context(
-                **launch_args
+            LOGGER.info(
+                "System Chrome launch failed, using bundled Chromium."
             )
+
+            bundled_chromium = _get_bundled_chromium_path()
+
+            if bundled_chromium:
+                LOGGER.info(
+                    "Launching bundled Chromium: %s",
+                    bundled_chromium
+                )
+
+                ctx = _playwright.chromium.launch_persistent_context(
+                    executable_path=bundled_chromium,
+                    **launch_args
+                )
+            else:
+                # Normal development environment.
+                ctx = _playwright.chromium.launch_persistent_context(
+                    **launch_args
+                )
+
     except Exception as exc:
-        LOGGER.warning("Failed to launch context with existing playwright driver, restarting driver: %s", exc)
+        LOGGER.warning(
+            "Failed to launch context with existing playwright driver, "
+            "restarting driver: %s",
+            exc
+        )
+
         try:
             _playwright.stop()
         except Exception:
             pass
+
         _playwright = sync_playwright().start()
+
         try:
             ctx = _playwright.chromium.launch_persistent_context(
                 channel="chrome",
                 **launch_args
             )
+
         except Exception:
-            ctx = _playwright.chromium.launch_persistent_context(
-                **launch_args
-            )
+            bundled_chromium = _get_bundled_chromium_path()
+
+            if bundled_chromium:
+                ctx = _playwright.chromium.launch_persistent_context(
+                    executable_path=bundled_chromium,
+                    **launch_args
+                )
+            else:
+                ctx = _playwright.chromium.launch_persistent_context(
+                    **launch_args
+                )
 
     _context = ctx
     return ctx
@@ -217,16 +311,8 @@ def _get_page():
             pass
         return page
     except Exception as exc:
-        LOGGER.warning("Error getting page from context, retrying with fresh context: %s", exc)
-        global _context
-        _context = None
-        ctx = _get_context()
-        page = ctx.new_page()
-        try:
-            page.bring_to_front()
-        except Exception:
-            pass
-        return page
+        LOGGER.warning("Error getting page from context: %s", exc)
+        raise WhatsAppWebError("Browser context is locked or failed.") from exc
 
 
 # â”€â”€ Login / QR handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -400,6 +486,8 @@ def _attach_image(page, image_path: Path) -> None:
 # â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def send_receipt(phone_number: str, image_path: str, message: str) -> None:
+    return _run_pw(_send_receipt_core, phone_number, image_path, message)
+def _send_receipt_core(phone_number: str, image_path: str, message: str) -> None:
     """Open WhatsApp Web chat for phone_number, attach image_path,
     and pre-fill message.
 
@@ -424,6 +512,8 @@ def send_receipt(phone_number: str, image_path: str, message: str) -> None:
 
 
 def prepare_message(phone_number: str, message: str) -> None:
+    return _run_pw(_prepare_message_core, phone_number, message)
+def _prepare_message_core(phone_number: str, message: str) -> None:
     """Open WhatsApp Web chat for phone_number and pre-fill message. No file attached.
 
     Leaves the chat open with text pre-filled.
@@ -450,6 +540,8 @@ def prepare_message(phone_number: str, message: str) -> None:
 
 
 def send_message(phone_number: str, message: str) -> None:
+    return _run_pw(_send_message_core, phone_number, message)
+def _send_message_core(phone_number: str, message: str) -> None:
     """Open WhatsApp Web chat for phone_number, pre-fill message, and auto-send it.
 
     Unlike prepare_message(), this function clicks the WhatsApp send button

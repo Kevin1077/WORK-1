@@ -8,28 +8,9 @@ import tempfile
 import logging
 from pathlib import Path
 
+_logger = logging.getLogger(__name__)
+
 from PIL import Image, ImageDraw, ImageFont
-
-# --- Phase 0: Persistent file-based debug logging ---
-_LOG_PATH = os.path.join(tempfile.gettempdir(), "victory_print_debug.log")
-_logger = logging.getLogger("victory_print")
-if not _logger.handlers:
-    _handler = logging.FileHandler(_LOG_PATH, encoding="utf-8")
-    _handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s"
-    ))
-    _logger.addHandler(_handler)
-    _logger.setLevel(logging.DEBUG)
-
-_logger.info("=" * 60)
-_logger.info("receipt.py module loaded from: %s", os.path.abspath(__file__))
-try:
-    _logger.info("File last modified: %s", os.path.getmtime(__file__))
-except Exception:
-    pass
-
-SHOP_NAME = "ÉTOFFE LAUNDRY STUDIO"
-SHOP_TAGLINE = "Professional Laundry Services"
 
 
 def _get_font(size: int, bold: bool = False, italic: bool = False) -> ImageFont.ImageFont:
@@ -59,260 +40,6 @@ def _get_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageF
     """Calculate text width in pixels."""
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]
-
-
-def _build_receipt_image(order_data: dict) -> Image.Image:
-    """Build and return a PIL Image object of the receipt (RGB mode, B&W design)."""
-    # Canvas config based on paper size setting
-    try:
-        import database as db
-        psize = db.get_setting("receipt_paper_size", "80mm")
-    except Exception:
-        psize = "80mm"
-
-    if psize == "58mm":
-        img_width = 384
-        margin = 20
-    elif psize == "A4":
-        img_width = 800
-        margin = 45
-    elif psize == "A5":
-        img_width = 600
-        margin = 35
-    else:
-        # 80mm Thermal (Standard POS)
-        img_width = 576
-        margin = 30
-
-    content_width = img_width - (2 * margin)
-    bg_color = (255, 255, 255)
-    fg_color = (0, 0, 0)
-
-    # Fonts
-    font_title = _get_font(24, bold=True)
-    font_tagline = _get_font(12, italic=True)
-    font_section = _get_font(14, bold=True)
-    font_normal = _get_font(12)
-    font_bold = _get_font(12, bold=True)
-    font_footer = _get_font(12, italic=True)
-
-    # 1st Pass: Calculate height dynamically
-    dummy_img = Image.new("RGB", (img_width, 100), bg_color)
-    draw = ImageDraw.Draw(dummy_img)
-
-    y = 35
-    # Header
-    y += 28 + 6  # Title
-    y += 18 + 12 # Tagline
-    y += 3 + 12  # Thick HR
-
-    # Order Details
-    y += 20 + 6  # Section header
-    y += 18 * 3  # 3 detail lines
-    y += 10 + 1 + 10 # HR
-
-    # Customer Details
-    y += 20 + 6  # Section header
-    cust_lines = 2
-    if order_data.get("place"):
-        cust_lines += 1
-    if order_data.get("address"):
-        cust_lines += 1
-    y += 18 * cust_lines
-    y += 10 + 1 + 10 # HR
-
-    # Order Items
-    y += 20 + 6  # Section header
-    y += 30      # Table Header row
-    items = order_data.get("items", [])
-    y += len(items) * 26 # Table Data rows
-    y += 30      # Grand Total row
-    y += 12
-
-    # Notes
-    if order_data.get("notes"):
-        y += 1 + 10 # HR
-        y += 20     # Notes text
-        y += 10
-
-    # Footer
-    y += 3 + 12  # Thick HR
-    y += 20      # Footer text
-    y += 35      # Bottom margin
-
-    total_height = y
-
-    # 2nd Pass: Render actual receipt image
-    img = Image.new("RGB", (img_width, total_height), bg_color)
-    draw = ImageDraw.Draw(img)
-
-    y = 35
-
-    # ── Header ────────────────────────────────────────────────────────────────
-    tw = _get_text_width(draw, SHOP_NAME, font_title)
-    draw.text(((img_width - tw) // 2, y), SHOP_NAME, fill=fg_color, font=font_title)
-    y += 32
-
-    tw = _get_text_width(draw, SHOP_TAGLINE, font_tagline)
-    draw.text(((img_width - tw) // 2, y), SHOP_TAGLINE, fill=fg_color, font=font_tagline)
-    y += 24
-
-    # Thick HR
-    draw.rectangle([margin, y, margin + content_width, y + 2], fill=fg_color)
-    y += 12
-
-    # ── Order Details ─────────────────────────────────────────────────────────
-    order_date = order_data.get("order_date", "")
-    try:
-        from datetime import datetime
-        order_date = datetime.strptime(order_date, "%Y-%m-%d").strftime("%d-%m-%Y")
-    except Exception:
-        pass
-
-    payment = order_data.get("payment_method", "") or "—"
-
-    draw.text((margin, y), "Order Details", fill=fg_color, font=font_section)
-    y += 22
-
-    draw.text((margin, y), f"Order #: {order_data['order_id']}", fill=fg_color, font=font_normal)
-    y += 18
-    draw.text((margin, y), f"Date   : {order_date}", fill=fg_color, font=font_normal)
-    y += 18
-    draw.text((margin, y), f"Payment: {payment}", fill=fg_color, font=font_normal)
-    y += 24
-
-    # Thin HR
-    draw.line([(margin, y), (margin + content_width, y)], fill=fg_color, width=1)
-    y += 12
-
-    # ── Customer Details ──────────────────────────────────────────────────────
-    draw.text((margin, y), "Customer Details", fill=fg_color, font=font_section)
-    y += 22
-
-    draw.text((margin, y), f"Name   : {order_data.get('name','')}", fill=fg_color, font=font_bold)
-    y += 18
-    draw.text((margin, y), f"Phone  : {order_data.get('phone','')}", fill=fg_color, font=font_bold)
-    y += 18
-    if order_data.get("place"):
-        draw.text((margin, y), f"Place  : {order_data['place']}", fill=fg_color, font=font_bold)
-        y += 18
-    if order_data.get("address"):
-        draw.text((margin, y), f"Address: {order_data['address']}", fill=fg_color, font=font_bold)
-        y += 18
-    y += 6
-
-    # Thin HR
-    draw.line([(margin, y), (margin + content_width, y)], fill=fg_color, width=1)
-    y += 12
-
-    # ── Items Table ───────────────────────────────────────────────────────────
-    draw.text((margin, y), "Order Items", fill=fg_color, font=font_section)
-    y += 24
-
-    # Table columns: S.No (45), Item (225), Qty (60), Rate (100), Total (100)
-    col_w = [45, 225, 60, 100, 100]
-    col_x = [margin]
-    for w in col_w[:-1]:
-        col_x.append(col_x[-1] + w)
-
-    # Header Row
-    header_h = 28
-    draw.rectangle([margin, y, margin + content_width, y + header_h], fill=(0, 0, 0))
-    headers = ["S.No", "Item", "Qty", "Rate", "Total"]
-
-    # S.No (centered)
-    tw = _get_text_width(draw, headers[0], font_bold)
-    draw.text((col_x[0] + (col_w[0] - tw) // 2, y + 6), headers[0], fill=(255, 255, 255), font=font_bold)
-    # Item (left)
-    draw.text((col_x[1] + 8, y + 6), headers[1], fill=(255, 255, 255), font=font_bold)
-    # Qty (centered)
-    tw = _get_text_width(draw, headers[2], font_bold)
-    draw.text((col_x[2] + (col_w[2] - tw) // 2, y + 6), headers[2], fill=(255, 255, 255), font=font_bold)
-    # Rate (right)
-    tw = _get_text_width(draw, headers[3], font_bold)
-    draw.text((col_x[3] + col_w[3] - tw - 8, y + 6), headers[3], fill=(255, 255, 255), font=font_bold)
-    # Total (right)
-    tw = _get_text_width(draw, headers[4], font_bold)
-    draw.text((col_x[4] + col_w[4] - tw - 8, y + 6), headers[4], fill=(255, 255, 255), font=font_bold)
-
-    y += header_h
-
-    # Data Rows
-    row_h = 26
-    for i, item in enumerate(items, start=1):
-        item_num = str(item.get("item_number", i))
-        cloth_type = str(item["cloth_type"])
-        qty_str = str(item["quantity"])
-        rate_str = f"{item['price_per_unit']:.2f}"
-        tot_str = f"{item['subtotal']:.2f}"
-
-        # Draw row outer box / cell borders
-        draw.rectangle([margin, y, margin + content_width, y + row_h], outline=(0, 0, 0), width=1)
-        for cx in col_x[1:]:
-            draw.line([(cx, y), (cx, y + row_h)], fill=(0, 0, 0), width=1)
-
-        # Draw cell text
-        tw = _get_text_width(draw, item_num, font_normal)
-        draw.text((col_x[0] + (col_w[0] - tw) // 2, y + 4), item_num, fill=fg_color, font=font_normal)
-
-        draw.text((col_x[1] + 8, y + 4), cloth_type, fill=fg_color, font=font_normal)
-
-        tw = _get_text_width(draw, qty_str, font_normal)
-        draw.text((col_x[2] + (col_w[2] - tw) // 2, y + 4), qty_str, fill=fg_color, font=font_normal)
-
-        tw = _get_text_width(draw, rate_str, font_normal)
-        draw.text((col_x[3] + col_w[3] - tw - 8, y + 4), rate_str, fill=fg_color, font=font_normal)
-
-        tw = _get_text_width(draw, tot_str, font_normal)
-        draw.text((col_x[4] + col_w[4] - tw - 8, y + 4), tot_str, fill=fg_color, font=font_normal)
-
-        y += row_h
-
-    # Grand Total Row
-    draw.rectangle([margin, y, margin + content_width, y + header_h], fill=(0, 0, 0))
-    label = "GRAND TOTAL"
-    total_val = f"{order_data.get('total_amount', 0):.2f}"
-
-    tw = _get_text_width(draw, label, font_bold)
-    draw.text((col_x[3] + col_w[3] - tw - 8, y + 6), label, fill=(255, 255, 255), font=font_bold)
-
-    tw = _get_text_width(draw, total_val, font_bold)
-    draw.text((col_x[4] + col_w[4] - tw - 8, y + 6), total_val, fill=(255, 255, 255), font=font_bold)
-
-    y += header_h + 12
-
-    # ── Notes ─────────────────────────────────────────────────────────────────
-    if order_data.get("notes"):
-        draw.line([(margin, y), (margin + content_width, y)], fill=fg_color, width=1)
-        y += 10
-        draw.text((margin, y), f"Notes: {order_data['notes']}", fill=fg_color, font=font_tagline)
-        y += 24
-
-    # ── Footer ────────────────────────────────────────────────────────────────
-    draw.rectangle([margin, y, margin + content_width, y + 2], fill=fg_color)
-    y += 14
-
-    footer_text = "Thank you for choosing ÉTOFFE LAUNDRY STUDIO!"
-    tw = _get_text_width(draw, footer_text, font_footer)
-    draw.text(((img_width - tw) // 2, y), footer_text, fill=fg_color, font=font_footer)
-
-    return img
-
-
-def generate_receipt(order_data: dict, output_path: str = None) -> str:
-    """
-    Generate a PNG image receipt for the given order_data dict.
-    Returns the path to the generated PNG image.
-    """
-    if output_path is None:
-        tmp = tempfile.gettempdir()
-        output_path = os.path.join(
-            tmp, f"victory_receipt_order_{order_data['order_id']}.png"
-        )
-
-    img = _build_receipt_image(order_data)
-    img.save(output_path, "PNG")
-    return output_path
 
 
 def _draw_dashed_line(draw: ImageDraw.ImageDraw, x0: int, x1: int, y: int, color=(140, 140, 140), dash_len=5, space_len=4, width=1):
@@ -369,6 +96,27 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, 
     return lines
 
 
+
+def _fmt_date_dots(iso: str) -> str:
+    """Convert YYYY-MM-DD -> DD.MM.YYYY (dots)."""
+    if not iso:
+        return ""
+    parts = iso.split("-")
+    if len(parts) == 3:
+        return f"{parts[2]}.{parts[1]}.{parts[0]}"
+    return iso
+
+def _strip_country_code(phone: str) -> str:
+    """Return a bare 10-digit Indian number, stripping leading +91/0091/91."""
+    if not phone:
+        return ""
+    digits = "".join(filter(str.isdigit, phone))
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    return digits
+
 def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     """
     Build and return an A5 (1754x2480 px @ 300 DPI) PIL Image of the WhatsApp receipt.
@@ -403,82 +151,87 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
         font_italic = _get_font(28, italic=True)
         font_addr   = _get_font(39)
 
-    # ── 1. Digital Header (in top 0–673px zone) ──────────────────────────────
+    # ── 1. Full-width Navy Header ─────────────────────────────────────────────
+    NAVY       = (13,  36,  71)      # dark navy  #0D2447
+    ADDR_BG    = (243, 244, 246)     # light gray #F3F4F6  (address strip)
+    ADDR_FG    = (55,  65,  81)      # dark gray  #374151  (address text)
+
+    navy_h     = 500                 # px — height of navy block
+    addr_strip_h = 100               # px — address strip height
+    hdr_total  = navy_h + addr_strip_h  # total header zone
+
+    # Navy rectangle — full canvas width
+    draw.rectangle([0, 0, w, navy_h], fill=NAVY)
+
+    # Load logo and build a full-white version for the navy background
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     logo_candidates = [
-        os.path.join(base_dir, "assets", "logo.png"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png"),
-        os.path.join("assets", "logo.png"),
-        os.path.abspath("assets/logo.png"),
+        os.path.join(base_dir, "assets", "etoffe_logo_color_transparent.png"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "etoffe_logo_color_transparent.png"),
+        os.path.join("assets", "etoffe_logo_color_transparent.png"),
+        os.path.abspath("assets/etoffe_logo_color_transparent.png"),
     ]
     logo_img = None
     for cand in logo_candidates:
         if cand and os.path.exists(cand):
             try:
-                raw_img = Image.open(cand).convert("RGBA")
-                data = raw_img.getdata()
-                new_data = []
-                has_opaque_white = False
-                for item in data:
-                    if item[0] > 235 and item[1] > 235 and item[2] > 235:
-                        new_data.append((255, 255, 255, 0))
-                        has_opaque_white = True
-                    else:
-                        new_data.append(item)
-                if has_opaque_white:
-                    raw_img.putdata(new_data)
-                bbox = raw_img.getbbox()
-                if bbox:
-                    logo_img = raw_img.crop(bbox)
-                else:
-                    logo_img = raw_img
+                raw = Image.open(cand).convert("RGBA")
+                # Make every visible pixel white so the logo shows clearly on navy
+                px = raw.getdata()
+                white_px = [
+                    (255, 255, 255, p[3]) if p[3] > 10 else (0, 0, 0, 0)
+                    for p in px
+                ]
+                raw.putdata(white_px)
+                bbox = raw.getbbox()
+                logo_img = raw.crop(bbox) if bbox else raw
                 break
             except Exception:
                 pass
 
-    header_top = 80
-    header_bottom = 600
-    header_mid = (header_top + header_bottom) // 2
-
-    # Split header into two equal halves for mirror symmetry
-    left_half_mid = ml + (content_w // 4)        # Midpoint of left half
-    right_half_mid = ml + 3 * (content_w // 4)    # Midpoint of right half
-
-    target_logo_w = 480
-    target_logo_h = 300
-    logo_center_y = header_mid
+    # Fit logo inside navy block with generous padding
+    max_logo_w = int(w * 0.55)
+    max_logo_h = navy_h - 60
+    navy_mid_y = navy_h // 2
     if logo_img:
-        logo_resized = logo_img.resize((target_logo_w, target_logo_h), Image.Resampling.LANCZOS)
-        logo_x = left_half_mid - (target_logo_w // 2)
-        logo_y = header_mid - (target_logo_h // 2)
-        img.paste(logo_resized, (logo_x, logo_y), mask=logo_resized.split()[3] if logo_resized.mode == "RGBA" else None)
-        logo_center_y = logo_y + (target_logo_h // 2)
+        lw, lh = logo_img.size
+        if lw > 0 and lh > 0:
+            scale = min(max_logo_w / lw, max_logo_h / lh)
+            fit_w = max(1, int(lw * scale))
+            fit_h = max(1, int(lh * scale))
+        else:
+            fit_w, fit_h = max_logo_w, max_logo_h
+        logo_resized = logo_img.resize((fit_w, fit_h), Image.Resampling.LANCZOS)
+        logo_x = (w - fit_w) // 2
+        logo_y = navy_mid_y - fit_h // 2
+        img.paste(logo_resized, (logo_x, logo_y),
+                  mask=logo_resized.split()[3] if logo_resized.mode == "RGBA" else None)
     else:
-        f_brand = _get_font(42, bold=True)
-        draw.text((left_half_mid, header_mid - 25), "ÉTOFFE LAUNDRY", fill=(0, 0, 0), font=f_brand, anchor="mt")
+        # Fallback text branding on navy
+        f_brand = _get_font(60, bold=True)
+        draw.text((w // 2, navy_mid_y - 30), "ÉTOFFE", fill=(255, 255, 255), font=f_brand, anchor="mm")
+        f_sub = _get_font(36)
+        draw.text((w // 2, navy_mid_y + 40), "LAUNDRY STUDIO", fill=(220, 220, 220), font=f_sub, anchor="mm")
 
-    # Address block: 4 lines, horizontally centered in the right half, vertically centered with header/logo
-    addr_lines = [
-        "Opp.St.Marys Church Lalam(Old)",
-        "Bypass Road",
-        "PALA",
-        "Mob:9846593957",
-    ]
+    # ── Address strip (light gray) ────────────────────────────────────────────
+    draw.rectangle([0, navy_h, w, navy_h + addr_strip_h], fill=ADDR_BG)
 
-    cx_addr = right_half_mid
-    addr_lh = 60
-    n = len(addr_lines)
-    addr_start_y = logo_center_y - int(((n - 1) * addr_lh) / 2)
+    try:
+        font_addr_strip = ImageFont.truetype("arial.ttf", 28)
+    except Exception:
+        font_addr_strip = _get_font(28)
 
-    for i, line in enumerate(addr_lines):
-        line_center_y = addr_start_y + i * addr_lh
-        draw.text((cx_addr, line_center_y), line, fill=(0, 0, 0), font=font_addr, anchor="mm")
+    addr_single = "Opp. St. Mary's Church, Lalam (Old), Bypass Road, PALA, Mob: 9846593957"
+    draw.text((w // 2, navy_h + addr_strip_h // 2), addr_single,
+              fill=ADDR_FG, font=font_addr_strip, anchor="mm")
 
-    # Thin horizontal rule at the bottom of header zone
-    draw.line([(ml, 630), (ml + content_w, 630)], fill=(0, 0, 0), width=2)
+    # Sharp bottom border of the entire header zone
+    border_y = hdr_total
+    draw.rectangle([0, border_y, w, border_y + 3], fill=(180, 180, 180))
 
-    # ── 2. Content below 673px (matches generate_dispatch_challan_image) ─────
-    y = 673
+    # ── 2. Content area — comfortable gap after header ────────────────────────
+    y = border_y + 56
+
 
     def _fmt_date_dots(iso: str) -> str:
         try:
@@ -504,16 +257,31 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     cust_addr  = (order_data.get("address") or "").strip()
     payment    = (order_data.get("payment_method") or "").strip()
     order_date = _fmt_date_dots(order_data.get("order_date", ""))
+    deliv_date = _fmt_date_dots(order_data.get("delivery_date", ""))
 
     # Header Two Columns
     left_w = int(content_w * 0.62)
     right_x = ml + left_w + 48
     lh = 48  # line height
 
+    # Address font: bold, 1 px larger than font_norm (31 instead of 30)
+    try:
+        font_addr_bold = ImageFont.truetype("arialbd.ttf", 31)
+    except Exception:
+        font_addr_bold = _get_font(31, bold=True)
+
+    # Customer name font: bold, 1 px larger (33 instead of 32)
+    try:
+        font_name_bold = ImageFont.truetype("arialbd.ttf", 33)
+    except Exception:
+        font_name_bold = _get_font(33, bold=True)
+
     # Left Column
     ly = y
-    draw.text((ml, ly), "To    :", fill=(0, 0, 0), font=font_bold)
-    draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_bold)
+    to_label = "TO:"
+    to_label_w = _get_text_width(draw, to_label + "  ", font_bold)
+    draw.text((ml, ly), to_label, fill=(0, 0, 0), font=font_bold)
+    draw.text((ml + to_label_w, ly), cust_name, fill=(0, 0, 0), font=font_name_bold)
     ly += lh
 
     cust_addr_lines = []
@@ -525,11 +293,12 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
             if part:
                 cust_addr_lines.append(part)
 
+    addr_indent = ml + to_label_w
     if cust_addr_lines:
-        draw.text((ml + 120, ly), ", " + cust_addr_lines[0], fill=(0, 0, 0), font=font_norm)
+        draw.text((addr_indent, ly), cust_addr_lines[0], fill=(0, 0, 0), font=font_addr_bold)
         ly += lh
         for frag in cust_addr_lines[1:]:
-            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_norm)
+            draw.text((addr_indent, ly), frag, fill=(0, 0, 0), font=font_addr_bold)
             ly += lh
 
     draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)
@@ -546,11 +315,13 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     draw.text((right_x + 100, ry), order_date, fill=(0, 0, 0), font=font_norm)
     ry += lh
 
-    draw.text((right_x, ry), "Mode of Payment:", fill=(0, 0, 0), font=font_bold)
-    draw.text((right_x + 280, ry), payment, fill=(0, 0, 0), font=font_norm)
+    draw.text((right_x, ry), "Delivery Date:", fill=(0, 0, 0), font=font_bold)
+    lbl_w = _get_text_width(draw, "Delivery Date: ", font_bold)
+    draw.text((right_x + lbl_w, ry), deliv_date, fill=(0, 0, 0), font=font_norm)
     ry += lh
 
-    y = max(ly, ry) + 30
+    # 0.3 cm shift down = 35 px at 300 DPI (30px original gap + 35px = 65px)
+    y = max(ly, ry) + 65
 
     # Table Column Widths
     cw_part = int(content_w * 0.45)
@@ -746,13 +517,15 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
     # --- Left column ---
     lx = ML
     ly = y
-    lbl_w  = stringWidth("Phone : ", F_BOLD, S_NORM)
-    val_w  = LEFT_W - lbl_w - 2 * mm   # max width for value text
-    indent = lx + lbl_w
+    to_label    = "TO:"
+    to_lbl_w    = stringWidth(to_label + "  ", F_BOLD, S_NORM)
+    indent      = lx + to_lbl_w
+    val_w       = LEFT_W - to_lbl_w - 2 * mm   # max width for value text
+    S_ADDR      = S_NORM + 1  # address font size: 1 pt larger
 
-    # "To    : <name>"
-    c.setFont(F_BOLD, S_NORM);  c.drawString(lx, ly, "To    :")
-    c.setFont(F_BOLD, S_NORM);  c.drawString(indent, ly, _trunc(cust_name, F_BOLD, S_NORM, val_w))
+    # "TO: <name>"
+    c.setFont(F_BOLD, S_NORM);      c.drawString(lx, ly, to_label)
+    c.setFont(F_BOLD, S_ADDR);      c.drawString(indent, ly, _trunc(cust_name, F_BOLD, S_ADDR, val_w))
     ly -= LH
 
     # Address — build a list of non-empty address fragments to print
@@ -767,12 +540,12 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
                 addr_lines.append(part)
 
     if addr_lines:
-        c.setFont(F_NORM, S_NORM)
-        # First address fragment: comma-prefixed, aligned under value column
-        c.drawString(indent, ly, _trunc(", " + addr_lines[0], F_NORM, S_NORM, val_w + lbl_w))
+        c.setFont(F_BOLD, S_ADDR)
+        # First address fragment aligned under TO: value column
+        c.drawString(indent, ly, _trunc(addr_lines[0], F_BOLD, S_ADDR, val_w + to_lbl_w))
         ly -= LH
         for frag in addr_lines[1:]:
-            c.drawString(indent + 2 * mm, ly, _trunc(frag + ",", F_NORM, S_NORM, val_w + lbl_w - 2 * mm))
+            c.drawString(indent + 2 * mm, ly, _trunc(frag, F_BOLD, S_ADDR, val_w + to_lbl_w - 2 * mm))
             ly -= LH
 
     # "Phone : <number>"
@@ -793,13 +566,13 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
         c.setFont(font_val, size_val);  c.drawString(rx + lw + 1 * mm, ry, value)
         ry -= LH
 
-    _rline("No.   :",            f"P{order_id}")
-    _rline("Date  :",            order_date)
-    _rline("Mode of Payment:",   payment)
+    _rline("No.   :",         f"P{order_id}")
+    _rline("Date  :",         order_date)
+    _rline("Delivery Date: ", deliv_date)
 
-    # Advance y past the taller of the two columns
+    # Advance y past the taller of the two columns, shifting table down by extra 0.3 cm (3mm)
     header_bottom = min(ly, ry)   # lower y = visually lower on page
-    y = header_bottom - 4 * mm
+    y = header_bottom - 7 * mm
 
     # ──────────────────────────────────────────────────────────────────────────
     # TABLE
@@ -1254,6 +1027,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
     cust_addr  = (order_data.get("address") or "").strip()
     payment    = (order_data.get("payment_method") or "").strip()
     order_date = _fmt_date_dots(order_data.get("order_date", ""))
+    deliv_date = _fmt_date_dots(order_data.get("delivery_date", ""))
 
     # Header Two Columns
     left_w = int(content_w * 0.62)
@@ -1262,7 +1036,7 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
 
     # Left Column
     ly = y
-    draw.text((ml, ly), "To    :", fill=(0, 0, 0), font=font_bold)
+    draw.text((ml, ly), "    To:", fill=(0, 0, 0), font=font_bold)
     draw.text((ml + 120, ly), cust_name, fill=(0, 0, 0), font=font_bold)
     ly += lh
 
@@ -1276,10 +1050,10 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
                 addr_lines.append(part)
 
     if addr_lines:
-        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_norm)
+        draw.text((ml + 120, ly), ", " + addr_lines[0], fill=(0, 0, 0), font=font_bold)
         ly += lh
         for frag in addr_lines[1:]:
-            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_norm)
+            draw.text((ml + 140, ly), frag + ",", fill=(0, 0, 0), font=font_bold)
             ly += lh
 
     draw.text((ml, ly), "Phone :", fill=(0, 0, 0), font=font_bold)
@@ -1296,11 +1070,15 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
     draw.text((right_x + 100, ry), order_date, fill=(0, 0, 0), font=font_norm)
     ry += lh
 
-    draw.text((right_x, ry), "Mode of Payment:", fill=(0, 0, 0), font=font_bold)
-    draw.text((right_x + 280, ry), payment, fill=(0, 0, 0), font=font_norm)
+
+
+    draw.text((right_x, ry), "Delivery Date:", fill=(0, 0, 0), font=font_bold)
+    lbl_w = _get_text_width(draw, "Delivery Date: ", font_bold)
+    draw.text((right_x + lbl_w, ry), deliv_date, fill=(0, 0, 0), font=font_norm)
     ry += lh
 
-    y = max(ly, ry) + 30
+    # 0.3 cm shift down = 35 px at 300 DPI (30px original gap + 35px = 65px)
+    y = max(ly, ry) + 65
 
     # Table Column Widths
     cw_part = int(content_w * 0.45)
@@ -1514,8 +1292,7 @@ def send_whatsapp_ready_notification(order_data: dict, parent_window=None) -> bo
     customer = order_data.get("name") or "Customer"
     message = (
         f"Hello {customer},\n\n"
-        f"Your ÉTOFFE LAUNDRY STUDIO order #{order_data['order_id']} is ready. "
-        "Please contact us to arrange pickup/delivery.\n\n"
+        f"Your ÉTOFFE LAUNDRY STUDIO order #{order_data['order_id']} is ready for pickup.\n\n"
         "Thank you!"
     )
     _open_whatsapp_text_manual(digits, message, parent_window)

@@ -4,7 +4,7 @@ Pre-fills all fields from the database and allows saving changes.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ui.theme   import COLORS, FONTS, STATUS_LIST
 
@@ -244,6 +244,21 @@ class EditOrderPopup(tk.Toplevel):
             self._order_date = make_entry(info_row, width=14)
         self._order_date.pack(side="left", padx=(0, 20), ipady=4)
 
+        ilbl("Delivery Date")
+        if HAS_CAL:
+            self._delivery_date = DateEntry(
+                info_row, width=14, date_pattern="dd-mm-yyyy",
+                background=COLORS["accent"], foreground=COLORS["card_bg"],
+                headersbackground=COLORS["sidebar_bg"] if "sidebar_bg" in COLORS else COLORS["card_bg"],
+                headersforeground=COLORS["accent"],
+                selectbackground=COLORS["accent"],
+                selectforeground=COLORS["card_bg"],
+                font=FONTS["default"],
+            )
+        else:
+            self._delivery_date = make_entry(info_row, width=14)
+        self._delivery_date.pack(side="left", padx=(0, 20), ipady=4)
+
         ilbl("Status")
         self._status_var = tk.StringVar()
         ttk.Combobox(
@@ -316,6 +331,7 @@ class EditOrderPopup(tk.Toplevel):
 
         # Dates
         od = o.get("order_date", "")
+        dd = o.get("delivery_date", "")
         if HAS_CAL:
             try:
                 from datetime import datetime as _dt
@@ -323,9 +339,17 @@ class EditOrderPopup(tk.Toplevel):
                 self._order_date.set_date(d)
             except Exception:
                 pass
+            try:
+                from datetime import datetime as _dt
+                d = _dt.strptime(dd, "%Y-%m-%d")
+                self._delivery_date.set_date(d)
+            except Exception:
+                pass
         else:
             self._order_date.delete(0, "end")
             self._order_date.insert(0, _to_display(od) if od else "")
+            self._delivery_date.delete(0, "end")
+            self._delivery_date.insert(0, _to_display(dd) if dd else "")
 
         # Items
         for item in o.get("items", []):
@@ -378,9 +402,10 @@ class EditOrderPopup(tk.Toplevel):
         # Dates — now editable
         if HAS_CAL:
             order_date = self._order_date.get_date().strftime("%Y-%m-%d")
+            delivery_date = self._delivery_date.get_date().strftime("%Y-%m-%d")
         else:
             order_date = _parse_date(self._order_date.get())
-        delivery_date = ""
+            delivery_date = _parse_date(self._delivery_date.get())
 
         # Update customer
         cid = self._order["customer_id"]

@@ -6,8 +6,15 @@ import os
 import re
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "laundry.db")
+# Production data directory
+APP_DATA_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "Étoffe Laundry"
+)
 
+os.makedirs(APP_DATA_DIR, exist_ok=True)
+
+DB_PATH = os.path.join(APP_DATA_DIR, "laundry.db")
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)

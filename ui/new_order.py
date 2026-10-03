@@ -4,7 +4,7 @@ Handles customer lookup/creation and dynamic clothing item table.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime
+from datetime import datetime, timedelta
 
 PAYMENT_METHODS = ["Cash", "GPay", "Unpaid"]
 
@@ -466,6 +466,24 @@ class NewOrderFrame(tk.Frame):
             self._order_date.config(state="readonly")
         self._order_date.pack(side="left", padx=(0, 24), ipady=4)
 
+        # Delivery date — default to today + 10 days, editable
+        lbl(row, "Delivery Date")
+        if HAS_CAL:
+            self._delivery_date = DateEntry(
+                row, width=14, date_pattern="dd-mm-yyyy",
+                background=COLORS["accent"], foreground=COLORS["card_bg"],
+                headersbackground=COLORS["sidebar_bg"],
+                headersforeground=COLORS["accent"],
+                selectbackground=COLORS["accent"],
+                selectforeground=COLORS["card_bg"],
+                font=FONTS["default"],
+            )
+            self._delivery_date.set_date(datetime.now() + timedelta(days=10))
+        else:
+            self._delivery_date = make_entry(row, width=14)
+            self._delivery_date.insert(0, (datetime.now() + timedelta(days=10)).strftime("%d-%m-%Y"))
+        self._delivery_date.pack(side="left", padx=(0, 24), ipady=4)
+
         # Payment method
         lbl(row, "Payment")
         self._payment_var = tk.StringVar(value="Cash")
@@ -593,9 +611,11 @@ class NewOrderFrame(tk.Frame):
     def _get_dates(self):
         if HAS_CAL:
             od = self._order_date.get_date().strftime("%Y-%m-%d")
+            dd = self._delivery_date.get_date().strftime("%Y-%m-%d")
         else:
             od = _parse_date(self._order_date.get())
-        return od, ""
+            dd = _parse_date(self._delivery_date.get())
+        return od, dd
 
     # ── Submit ─────────────────────────────────────────────────────────────────
 
@@ -747,14 +767,17 @@ class NewOrderFrame(tk.Frame):
         self._total_var.set("₹0.00")
         self._notes_var.set("")
         self._payment_var.set("Cash")
-        # Always reset order date back to today
+        # Always reset order date back to today and delivery date to today + 10
         if HAS_CAL:
             self._order_date.set_date(datetime.now())
+            self._delivery_date.set_date(datetime.now() + timedelta(days=10))
         else:
             self._order_date.config(state="normal")
             self._order_date.delete(0, "end")
             self._order_date.insert(0, datetime.now().strftime("%d-%m-%Y"))
             self._order_date.config(state="readonly")
+            self._delivery_date.delete(0, "end")
+            self._delivery_date.insert(0, (datetime.now() + timedelta(days=10)).strftime("%d-%m-%Y"))
 
     def refresh(self):
         """Called when this frame is shown — reload cloth types."""
