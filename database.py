@@ -185,11 +185,33 @@ def _backfill_item_units(conn):
 # ── Customers ─────────────────────────────────────────────────────────────────
 
 def get_customer_by_phone(phone: str):
+    raw = str(phone or "").strip()
+    norm = clean_phone(raw)
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM customers WHERE phone = ?", (phone.strip(),)
+            "SELECT * FROM customers WHERE phone = ?", (raw,)
         ).fetchone()
+        if not row and norm:
+            all_rows = conn.execute("SELECT * FROM customers").fetchall()
+            for r in all_rows:
+                if clean_phone(r["phone"]) == norm:
+                    return dict(r)
     return dict(row) if row else None
+
+
+def customer_phone_exists(phone: str, exclude_cid: int = None) -> bool:
+    """Check if any customer with this phone number exists, excluding exclude_cid."""
+    norm = clean_phone(phone)
+    if not norm:
+        return False
+    with get_connection() as conn:
+        all_custs = conn.execute("SELECT customer_id, phone FROM customers").fetchall()
+        for c in all_custs:
+            if exclude_cid and c["customer_id"] == exclude_cid:
+                continue
+            if clean_phone(c["phone"]) == norm:
+                return True
+    return False
 
 
 def get_customer_by_id(cid: int):
@@ -200,20 +222,20 @@ def get_customer_by_id(cid: int):
     return dict(row) if row else None
 
 
-def create_customer(name, phone, place, address) -> int:
+def create_customer(name, phone, place="", address="") -> int:
     with get_connection() as conn:
         cur = conn.execute(
             "INSERT INTO customers (name, phone, place, address) VALUES (?, ?, ?, ?)",
-            (name.strip(), phone.strip(), place.strip(), address.strip())
+            (name.strip(), phone.strip(), (place or "").strip(), (address or "").strip())
         )
         return cur.lastrowid
 
 
-def update_customer(cid, name, phone, place, address):
+def update_customer(cid, name, phone, place="", address=""):
     with get_connection() as conn:
         conn.execute(
             "UPDATE customers SET name=?, phone=?, place=?, address=? WHERE customer_id=?",
-            (name.strip(), phone.strip(), place.strip(), address.strip(), cid)
+            (name.strip(), phone.strip(), (place or "").strip(), (address or "").strip(), cid)
         )
 
 
@@ -414,7 +436,7 @@ def search_orders(query: str):
         except ValueError:
             like = f"%{query.strip()}%"
             rows = conn.execute(
-                _ORDER_SELECT + " WHERE c.name LIKE ? OR c.phone LIKE ? ORDER BY o.order_id DESC",
+                _ORDER_SELECT + " WHERE c.name LIKE ? OR c.phone LIKE ? ORDER BY o.order_id ASC",
                 (like, like)
             ).fetchall()
     return [dict(r) for r in rows]
@@ -424,7 +446,7 @@ def search_orders_by_status(status: str):
     """Return all orders matching the given status."""
     with get_connection() as conn:
         rows = conn.execute(
-            _ORDER_SELECT + " WHERE o.status=? ORDER BY o.order_id DESC",
+            _ORDER_SELECT + " WHERE o.status=? ORDER BY o.order_id ASC",
             (status,)
         ).fetchall()
     return [dict(r) for r in rows]
@@ -443,7 +465,7 @@ def search_orders_by_item_status(returned: bool):
             JOIN order_items oi ON o.order_id = oi.order_id
             JOIN order_item_units u ON oi.item_id = u.item_id
             WHERE u.returned = ?
-            ORDER BY o.order_id DESC
+            ORDER BY o.order_id ASC
         """, (val,)).fetchall()
     return [dict(r) for r in rows]
 
@@ -451,7 +473,7 @@ def search_orders_by_item_status(returned: bool):
 def get_orders_by_date_range(from_date: str, to_date: str):
     with get_connection() as conn:
         rows = conn.execute(
-            _ORDER_SELECT + " WHERE o.order_date BETWEEN ? AND ? ORDER BY o.order_date DESC, o.order_id DESC",
+            _ORDER_SELECT + " WHERE o.order_date BETWEEN ? AND ? ORDER BY o.order_id ASC",
             (from_date, to_date)
         ).fetchall()
     return [dict(r) for r in rows]
@@ -460,8 +482,16 @@ def get_orders_by_date_range(from_date: str, to_date: str):
 def get_recent_orders(limit=200):
     with get_connection() as conn:
         rows = conn.execute(
-            _ORDER_SELECT + " ORDER BY o.order_id DESC LIMIT ?",
+            _ORDER_SELECT + " ORDER BY o.order_id ASC LIMIT ?",
             (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_orders():
+    with get_connection() as conn:
+        rows = conn.execute(
+            _ORDER_SELECT + " ORDER BY o.order_id ASC"
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -570,7 +600,7 @@ def get_customer_aggregations():
       - total_spent: total revenue from customer
       - first_visit: earliest order_date
       - last_visit: latest order_date
-      - orders: list of order dicts sorted by order_id DESC
+      - orders: list of order dicts sorted by order_id ASC
     """
     with get_connection() as conn:
         rows = conn.execute("""
@@ -579,7 +609,7 @@ def get_customer_aggregations():
                    c.customer_id, c.name, c.phone, c.place, c.address
             FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id
-            ORDER BY o.order_id DESC
+            ORDER BY o.order_id ASC
         """).fetchall()
 
         cust_rows = conn.execute("""
@@ -596,6 +626,7 @@ def get_customer_aggregations():
         norm_p = clean_phone(raw_phone)
         if norm_p not in grouped:
             grouped[norm_p] = {
+                "customer_id": order.get("customer_id"),
                 "name": order.get("name", "Customer"),
                 "phone": raw_phone,
                 "normalized_phone": norm_p,
@@ -608,6 +639,8 @@ def get_customer_aggregations():
                 "orders": []
             }
         cust = grouped[norm_p]
+        if not cust.get("customer_id") and order.get("customer_id"):
+            cust["customer_id"] = order.get("customer_id")
         cust["total_orders"] += 1
         cust["total_spent"] += float(order.get("total_amount", 0.0))
         cust["orders"].append(order)
@@ -625,6 +658,7 @@ def get_customer_aggregations():
         norm_p = clean_phone(raw_phone)
         if norm_p not in grouped:
             grouped[norm_p] = {
+                "customer_id": cdict.get("customer_id"),
                 "name": cdict.get("name", "Customer"),
                 "phone": raw_phone,
                 "normalized_phone": norm_p,

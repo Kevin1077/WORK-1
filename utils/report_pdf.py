@@ -123,6 +123,7 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
     story.append(Spacer(1, 4 * mm))
 
     # Table header
+    rows = sorted(rows, key=lambda r: int(r.get("order_id", 0)))
     header = ["S.No", "Order #", "Date", "Customer", "Phone", "Total (₹)", "Status", "Payment"]
     table_data = [header]
 
@@ -231,6 +232,7 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
     now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
     story.append(Paragraph(f"Search: {query_desc}    |    Generated: {now}", subtitle_style))
     story.append(Spacer(1, 4 * mm))
+    rows = sorted(rows, key=lambda r: int(r.get("order_id", 0)))
 
     if mode == "item_status":
         header = ["S.No", "Order #", "Date", "Customer", "Item / Cloth Type", "Unit #"]

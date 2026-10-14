@@ -86,16 +86,17 @@ class AllOrdersFrame(tk.Frame):
     # ── Data loading ───────────────────────────────────────────────────────────
 
     def refresh(self):
-        self._all_rows = db.get_recent_orders(limit=500)
+        self._all_rows = db.get_all_orders()
         self._status_var.set("All")
         self._apply_filter()
 
     def _apply_filter(self):
         status = self._status_var.get()
         if status == "All":
-            rows = self._all_rows
+            rows = list(self._all_rows)
         else:
             rows = [r for r in self._all_rows if r["status"] == status]
+        rows.sort(key=lambda r: int(r.get("order_id", 0)))
 
         self._tree.delete(*self._tree.get_children())
         for i, row in enumerate(rows):

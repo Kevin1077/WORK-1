@@ -157,6 +157,7 @@ class DateRecordsFrame(tk.Frame):
                                    "From date must be before To date.", parent=self)
             return
         rows = db.get_orders_by_date_range(fd, td)
+        rows.sort(key=lambda r: int(r.get("order_id", 0)))
         self._last_rows = rows
         self._last_dates = (fd, td)
         self._populate(rows)

@@ -149,6 +149,7 @@ class DashboardFrame(tk.Frame):
                 self._update_stat(key, val)
 
             rows = db.get_recent_orders(limit=50)
+            rows.sort(key=lambda r: int(r.get("order_id", 0)))
             self._tree.delete(*self._tree.get_children())
             for i, row in enumerate(rows):
                 tag_bg = "even" if i % 2 == 0 else "odd"

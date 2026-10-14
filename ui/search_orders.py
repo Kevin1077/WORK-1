@@ -333,6 +333,7 @@ class SearchOrdersFrame(tk.Frame):
     def _populate(self, rows):
         """Populate the results table. Returns the number of rows inserted."""
         self._tree.delete(*self._tree.get_children())
+        rows = sorted(rows, key=lambda r: int(r.get("order_id", 0)))
         mode = self._mode.get()
         row_count = 0
         print_rows = []  # flat rows for PDF
@@ -451,7 +452,7 @@ def _search_by_name(name: str):
                    c.name, c.phone
             FROM orders o JOIN customers c ON o.customer_id=c.customer_id
             WHERE c.name LIKE ?
-            ORDER BY o.order_id DESC
+            ORDER BY o.order_id ASC
         """, (like,)).fetchall()
     return [dict(r) for r in rows]
 
@@ -467,7 +468,7 @@ def _search_by_phone(phone: str):
                    c.name, c.phone
             FROM orders o JOIN customers c ON o.customer_id=c.customer_id
             WHERE c.phone LIKE ?
-            ORDER BY o.order_id DESC
+            ORDER BY o.order_id ASC
         """, (like,)).fetchall()
     return [dict(r) for r in rows]
 

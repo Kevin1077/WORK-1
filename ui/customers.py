@@ -80,7 +80,8 @@ class CustomersFrame(tk.Frame):
         sort_cb.bind("<<ComboboxSelected>>", lambda e: self._apply_filter_and_sort())
 
         # Action Buttons
-        make_btn(toolbar, "📢 Message All", self._open_bulk_message, "primary").pack(side="right", padx=(8, 0))
+        make_btn(toolbar, "➕ New Customer", self._open_add_customer, "primary").pack(side="right", padx=(8, 0))
+        make_btn(toolbar, "📢 Message All", self._open_bulk_message, "neutral").pack(side="right", padx=(8, 0))
         make_btn(toolbar, "🔄 Refresh", self.refresh, "neutral").pack(side="right")
 
         # Count label
@@ -133,7 +134,7 @@ class CustomersFrame(tk.Frame):
         elif sort_mode == "Name (A-Z)":
             filtered.sort(key=lambda c: c["name"].lower())
         else: # Last Visit (Newest)
-            filtered.sort(key=lambda c: c["last_visit"], reverse=True)
+            filtered.sort(key=lambda c: "" if c["last_visit"] == "—" else str(c["last_visit"]), reverse=True)
 
         self._filtered_customers = filtered
         self._populate_tree(filtered)
@@ -220,6 +221,176 @@ class CustomersFrame(tk.Frame):
             return
         BulkMessageDialog(self, self._all_customers)
 
+    def _open_add_customer(self):
+        CustomerFormDialog(self, customer=None, on_saved=self.refresh)
+
+    def _edit_selected_customer(self):
+        cust = self._get_selected_cust()
+        if not cust:
+            messagebox.showinfo("Edit Customer", "Please select a customer from the table first.", parent=self)
+            return
+        CustomerFormDialog(self, customer=cust, on_saved=self.refresh)
+
+
+# ── Customer Form Dialog (Add / Edit Customer) ────────────────────────────────
+
+class CustomerFormDialog(tk.Toplevel):
+    """Dialog for creating a new customer or editing an existing customer."""
+    def __init__(self, parent, customer: dict = None, on_saved=None):
+        super().__init__(parent)
+        self.customer = customer
+        self.is_edit = customer is not None
+        self.on_saved = on_saved
+
+        title_str = f"Edit Customer — {customer.get('name', '')}" if self.is_edit else "Add New Customer"
+        self.title(title_str)
+        self.geometry("480x440")
+        self.minsize(440, 400)
+        self.configure(bg=COLORS["bg"])
+        self.transient(parent)
+        self.grab_set()
+
+        self._build()
+        self._center()
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<Return>", lambda e: self._save())
+
+    def _center(self):
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+
+    def _build(self):
+        # Header banner
+        hdr = tk.Frame(self, bg=COLORS["card_bg"], padx=20, pady=14)
+        hdr.pack(fill="x")
+        title_text = "✏️ Edit Customer Details" if self.is_edit else "➕ Add New Customer"
+        tk.Label(hdr, text=title_text, bg=COLORS["card_bg"],
+                 fg=COLORS["accent"], font=FONTS["title"]).pack(anchor="w")
+        sub_text = "Update the customer contact details below." if self.is_edit else "Fill in customer details to save to records."
+        tk.Label(hdr, text=sub_text, bg=COLORS["card_bg"],
+                 fg=COLORS["text_dim"], font=FONTS["small"]).pack(anchor="w", pady=(2, 0))
+        tk.Frame(self, bg=COLORS["border"], height=1).pack(fill="x")
+
+        # Body form container
+        body = tk.Frame(self, bg=COLORS["bg"], padx=20, pady=16)
+        body.pack(fill="both", expand=True)
+
+        card = tk.Frame(body, bg=COLORS["card_bg"], padx=18, pady=16,
+                        relief="flat", highlightthickness=1, highlightbackground=COLORS["border"])
+        card.pack(fill="both", expand=True)
+
+        # Customer Name
+        tk.Label(card, text="Customer Name *", bg=COLORS["card_bg"],
+                 fg=COLORS["text"], font=FONTS["bold"]).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        self._name_var = tk.StringVar(value=self.customer.get("name", "") if self.customer else "")
+        self._name_entry = make_entry(card, textvariable=self._name_var, width=32)
+        self._name_entry.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+
+        # Phone Number
+        tk.Label(card, text="Phone Number *", bg=COLORS["card_bg"],
+                 fg=COLORS["text"], font=FONTS["bold"]).grid(row=2, column=0, sticky="w", pady=(0, 2))
+        self._phone_var = tk.StringVar(value=self.customer.get("phone", "") if self.customer else "")
+        self._phone_entry = make_entry(card, textvariable=self._phone_var, width=32)
+        self._phone_entry.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+
+        # Place / Area
+        tk.Label(card, text="Place / Area (Optional)", bg=COLORS["card_bg"],
+                 fg=COLORS["text"], font=FONTS["bold"]).grid(row=4, column=0, sticky="w", pady=(0, 2))
+        self._place_var = tk.StringVar(value=self.customer.get("place", "") if self.customer else "")
+        self._place_entry = make_entry(card, textvariable=self._place_var, width=32)
+        self._place_entry.grid(row=5, column=0, sticky="ew", pady=(0, 10))
+
+        # Address
+        tk.Label(card, text="Address (Optional)", bg=COLORS["card_bg"],
+                 fg=COLORS["text"], font=FONTS["bold"]).grid(row=6, column=0, sticky="w", pady=(0, 2))
+        self._address_var = tk.StringVar(value=self.customer.get("address", "") if self.customer else "")
+        self._address_entry = make_entry(card, textvariable=self._address_var, width=32)
+        self._address_entry.grid(row=7, column=0, sticky="ew", pady=(0, 4))
+
+        card.columnconfigure(0, weight=1)
+
+        # Button bar
+        btn_bar = tk.Frame(self, bg=COLORS["bg"], padx=20, pady=12)
+        btn_bar.pack(fill="x")
+
+        save_label = "💾 Save Changes" if self.is_edit else "➕ Add Customer"
+        make_btn(btn_bar, save_label, self._save, "primary").pack(side="right", padx=(8, 0))
+        make_btn(btn_bar, "Cancel", self.destroy, "neutral").pack(side="right")
+
+        self._name_entry.focus_set()
+
+    def _save(self):
+        name = self._name_var.get().strip()
+        phone = self._phone_var.get().strip()
+        place = self._place_var.get().strip()
+        address = self._address_var.get().strip()
+
+        if not name:
+            messagebox.showwarning("Validation Error", "Please enter the customer name.", parent=self)
+            self._name_entry.focus_set()
+            return
+
+        if not phone:
+            messagebox.showwarning("Validation Error", "Please enter the customer phone number.", parent=self)
+            self._phone_entry.focus_set()
+            return
+
+        digits = "".join(c for c in phone if c.isdigit())
+        if len(digits) < 7:
+            messagebox.showwarning(
+                "Validation Error",
+                "Please enter a valid phone number (at least 7 to 10 digits).",
+                parent=self
+            )
+            self._phone_entry.focus_set()
+            return
+
+        cid = self.customer.get("customer_id") if self.is_edit else None
+
+        if db.customer_phone_exists(phone, exclude_cid=cid):
+            messagebox.showwarning(
+                "Duplicate Phone Number",
+                f"A customer with phone number '{phone}' already exists in the system.",
+                parent=self
+            )
+            self._phone_entry.focus_set()
+            return
+
+        try:
+            if self.is_edit:
+                if not cid and self.customer.get("phone"):
+                    old_c = db.get_customer_by_phone(self.customer["phone"])
+                    if old_c:
+                        cid = old_c["customer_id"]
+
+                if cid:
+                    db.update_customer(cid, name, phone, place, address)
+                else:
+                    cid = db.create_customer(name, phone, place, address)
+
+                self.customer["customer_id"] = cid
+                self.customer["name"] = name
+                self.customer["phone"] = phone
+                self.customer["normalized_phone"] = db.clean_phone(phone)
+                self.customer["place"] = place
+                self.customer["address"] = address
+
+                messagebox.showinfo("Success", f"Customer '{name}' updated successfully.", parent=self)
+            else:
+                cid = db.create_customer(name, phone, place, address)
+                messagebox.showinfo("Success", f"Customer '{name}' added successfully.", parent=self)
+
+            self.destroy()
+            if self.on_saved:
+                self.on_saved()
+
+        except Exception as ex:
+            LOGGER.exception("Failed to save customer")
+            messagebox.showerror("Error", f"Failed to save customer: {ex}", parent=self)
+
 
 # ── Customer Detail Dialog ────────────────────────────────────────────────────
 
@@ -230,8 +401,8 @@ class CustomerDetailDialog(tk.Toplevel):
         self.refresh_cb = refresh_cb
 
         self.title(f"Customer Profile — {customer['name']}")
-        self.geometry("850x600")
-        self.minsize(750, 500)
+        self.geometry("900x620")
+        self.minsize(800, 500)
         self.configure(bg=COLORS["bg"])
         # No grab_set() — keep the parent list interactive so clicking
         # another customer row while this dialog is open works correctly.
@@ -249,20 +420,56 @@ class CustomerDetailDialog(tk.Toplevel):
 
     def _build(self):
         # Header profile card
-        card = tk.Frame(self, bg=COLORS["card_bg"], padx=20, pady=16)
+        card = tk.Frame(self, bg=COLORS["card_bg"], padx=20, pady=16,
+                        highlightthickness=1, highlightbackground=COLORS["border"])
         card.pack(fill="x", padx=16, pady=16)
 
-        left = tk.Frame(card, bg=COLORS["card_bg"])
-        left.pack(side="left", fill="both", expand=True)
+        # Top row: info on left, action buttons on right
+        top_row = tk.Frame(card, bg=COLORS["card_bg"])
+        top_row.pack(fill="x")
 
-        tk.Label(left, text=self.customer["name"], bg=COLORS["card_bg"],
-                 fg=COLORS["accent"], font=FONTS["title"]).pack(anchor="w")
+        # Action buttons on the right (packed first with side="right" so they are never clipped)
+        btn_box = tk.Frame(top_row, bg=COLORS["card_bg"])
+        btn_box.pack(side="right", anchor="ne", padx=(12, 0))
+
+        make_btn(btn_box, "✏️ Edit Customer",
+                 self._edit_customer,
+                 "edit", padx=12, pady=6).pack(side="left", padx=(0, 8))
+
+        make_btn(btn_box, "💬 Send WhatsApp Message",
+                 lambda: CustomerMessageDialog(self, self.customer),
+                 "primary", padx=12, pady=6).pack(side="left", padx=(0, 8))
+
+        make_btn(btn_box, "🗑️ Delete Customer",
+                 self._delete_customer,
+                 "danger", padx=12, pady=6).pack(side="left")
+
+        # Customer identity on the left
+        info_frame = tk.Frame(top_row, bg=COLORS["card_bg"])
+        info_frame.pack(side="left", fill="both", expand=True)
+
+        self._name_lbl = tk.Label(info_frame, text=self.customer["name"], bg=COLORS["card_bg"],
+                                  fg=COLORS["accent"], font=FONTS["title"])
+        self._name_lbl.pack(anchor="w")
 
         phone_str = self.customer["phone"]
         if not phone_str.startswith("+") and len(phone_str) == 10:
             phone_str = f"+91 {phone_str}"
-        tk.Label(left, text=f"📞 {phone_str}", bg=COLORS["card_bg"],
-                 fg=COLORS["text"], font=FONTS["header"]).pack(anchor="w", pady=(2, 8))
+        self._phone_lbl = tk.Label(info_frame, text=f"📞 {phone_str}", bg=COLORS["card_bg"],
+                                   fg=COLORS["text"], font=FONTS["header"])
+        self._phone_lbl.pack(anchor="w", pady=(2, 4))
+
+        self._loc_lbl = tk.Label(info_frame, text="", bg=COLORS["card_bg"],
+                                 fg=COLORS["text_dim"], font=FONTS["small"])
+        self._loc_lbl.pack(anchor="w")
+        self._update_loc_label()
+
+        # Divider between identity and stats
+        tk.Frame(card, bg=COLORS["border"], height=1).pack(fill="x", pady=(12, 10))
+
+        # Bottom row: Stats summary spanning the full card width
+        stats_bar = tk.Frame(card, bg=COLORS["card_bg"])
+        stats_bar.pack(fill="x")
 
         stats_text = (
             f"Total Orders: {self.customer['total_orders']}   |   "
@@ -270,22 +477,51 @@ class CustomerDetailDialog(tk.Toplevel):
             f"First Visit: {_fmt_date(self.customer['first_visit'])}   |   "
             f"Last Visit: {_fmt_date(self.customer['last_visit'])}"
         )
-        tk.Label(left, text=stats_text, bg=COLORS["card_bg"],
-                 fg=COLORS["text_dim"], font=FONTS["small"]).pack(anchor="w")
-
-        btn_box = tk.Frame(card, bg=COLORS["card_bg"])
-        btn_box.pack(side="right")
-
-        make_btn(btn_box, "💬 Send WhatsApp Message",
-                 lambda: CustomerMessageDialog(self, self.customer),
-                 "primary").pack(side="left", padx=(0, 8))
-
-        make_btn(btn_box, "🗑️ Delete Customer",
-                 self._delete_customer,
-                 "danger").pack(side="left")
+        self._stats_lbl = tk.Label(stats_bar, text=stats_text, bg=COLORS["card_bg"],
+                                   fg=COLORS["text_dim"], font=FONTS["small"])
+        self._stats_lbl.pack(anchor="w")
 
         # Order history — must be called last so it fills remaining space
         self._build_order_history()
+
+    def _update_loc_label(self):
+        parts = []
+        if self.customer.get("place"):
+            parts.append(f"📍 {self.customer['place']}")
+        if self.customer.get("address"):
+            parts.append(f"🏠 {self.customer['address']}")
+        if parts:
+            self._loc_lbl.config(text="   |   ".join(parts))
+        else:
+            self._loc_lbl.config(text="")
+
+    def _edit_customer(self):
+        CustomerFormDialog(self, customer=self.customer, on_saved=self._on_customer_edited)
+
+    def _on_customer_edited(self):
+        if self.refresh_cb:
+            self.refresh_cb()
+        norm_p = self.customer.get("normalized_phone")
+        cid = self.customer.get("customer_id")
+        for c in db.get_customer_aggregations():
+            if (cid and c.get("customer_id") == cid) or c.get("normalized_phone") == norm_p:
+                self.customer = c
+                break
+        self.title(f"Customer Profile — {self.customer['name']}")
+        self._name_lbl.config(text=self.customer["name"])
+        phone_str = self.customer["phone"]
+        if not phone_str.startswith("+") and len(phone_str) == 10:
+            phone_str = f"+91 {phone_str}"
+        self._phone_lbl.config(text=f"📞 {phone_str}")
+        self._update_loc_label()
+        stats_text = (
+            f"Total Orders: {self.customer['total_orders']}   |   "
+            f"Total Spent: ₹{self.customer['total_spent']:,.2f}   |   "
+            f"First Visit: {_fmt_date(self.customer['first_visit'])}   |   "
+            f"Last Visit: {_fmt_date(self.customer['last_visit'])}"
+        )
+        self._stats_lbl.config(text=stats_text)
+        self._populate_order_history()
 
     def _delete_customer(self):
         if messagebox.askyesno(
@@ -325,7 +561,7 @@ class CustomerDetailDialog(tk.Toplevel):
     def _populate_order_history(self):
         """Clear and re-fill the order history treeview from self.customer['orders']."""
         self._tree.delete(*self._tree.get_children())
-        orders = self.customer.get("orders", [])
+        orders = sorted(self.customer.get("orders", []), key=lambda r: int(r.get("order_id", 0)))
         for i, row in enumerate(orders):
             tag_bg = "even" if i % 2 == 0 else "odd"
             tag_st = f"s_{row.get('status', '')}"
