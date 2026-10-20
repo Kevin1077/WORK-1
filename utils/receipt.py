@@ -119,15 +119,37 @@ def _strip_country_code(phone: str) -> str:
 
 def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     """
-    Build and return an A5 (1754x2480 px @ 300 DPI) PIL Image of the WhatsApp receipt.
-    Uses the exact same canvas dimensions, margins, font sizes, table structure,
-    and footer as generate_dispatch_challan_image, with a digital header (Étoffe logo
-    and shop address) in the top 0-673px zone.
+    Build and return a PNG PIL Image of the WhatsApp receipt.
+    Canvas height is computed dynamically from the number of garment rows so that
+    long orders are never clipped.  Minimum height is A5 @ 300 DPI (2480 px).
     """
     from datetime import datetime
 
-    # A5 size at 300 DPI: 1754 x 2480 pixels
-    w, h = 1754, 2480
+    # --- Pre-compute canvas height from item count ---
+    items = order_data.get("items", [])
+    total_rows = sum(max(1, int(item.get("quantity", 1))) for item in items)
+
+    # Fixed layout constants (pixels @ 300 DPI)
+    navy_h       = 500
+    addr_strip_h = 100
+    hdr_total    = navy_h + addr_strip_h
+    hdr_gap      = 56          # gap below header border → content start
+    lh           = 48          # line height for customer address block
+    max_addr_lines = 1 + 3 + 1 # TO + up to 3 addr fragments + Phone
+    addr_block_h = max_addr_lines * lh
+    table_gap    = 65          # gap between address block and table
+    tbl_hdr_h    = 60
+    row_h        = 52
+    total_row_h  = 10 + 60     # divider + TOTAL row
+    footer_h     = 60 + 45 + 40  # signature lines + bottom margin
+
+    content_start_y = hdr_total + 3 + hdr_gap  # 3 px border
+    table_start_y   = content_start_y + addr_block_h + table_gap
+    needed_h = table_start_y + tbl_hdr_h + (total_rows * row_h) + total_row_h + footer_h
+
+    w = 1754
+    h = max(2480, needed_h)   # at least A5; grow for long orders
+
     img = Image.new("RGB", (w, h), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
@@ -345,9 +367,10 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     y += hdr_h
 
     # Data Rows
-    items = order_data.get("items", [])
+    # garment_counter starts at 1 for normal orders; for paginated pages
+    # each item carries _garment_index with the real global counter.
     garment_counter = 1
-    total_garments = 0
+    total_garments_on_page = 0
 
     for item in items:
         cloth_type  = str(item.get("cloth_type", ""))
@@ -357,7 +380,9 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
         particulars = cloth_type + " DC" if not cloth_type.endswith(" DC") else cloth_type
 
         for _ in range(qty):
-            barcode_str = f"P{order_id}-{garment_counter}"
+            # Use _garment_index if present (paginated synthetic items), else use counter
+            real_idx = item.get("_garment_index", garment_counter)
+            barcode_str = f"P{order_id}-{real_idx}"
             text_y = y + 10
 
             draw.text((col_x[0] + 15, text_y), particulars, fill=(0, 0, 0), font=font_norm)
@@ -368,8 +393,7 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
 
             y += row_h
             garment_counter += 1
-
-    total_garments = garment_counter - 1
+            total_garments_on_page += 1
 
     # Divider line
     draw.line([(ml, y), (ml + content_w, y)], fill=(0, 0, 0), width=2)
@@ -377,11 +401,31 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
 
     # TOTAL row
     total_h = 60
-    total_val = f"{float(order_data.get('total_amount', 0)):.2f}"
+    raw_total = order_data.get('total_amount')
+    page_num = order_data.get('_page_num')
+    total_pages = order_data.get('_total_pages')
+    garment_range = order_data.get('_garment_range')
+    grand_total_garments = order_data.get('_total_garments', total_garments_on_page)
     text_y = y + 12
 
-    draw.text((col_x[0] + 15, text_y), "TOTAL", fill=(0, 0, 0), font=font_hdr)
-    draw.text((col_x[1] + cw_bar // 2, text_y), str(total_garments), fill=(0, 0, 0), font=font_hdr, anchor="mt")
+    if raw_total is not None:
+        # Final (or only) page — show actual total
+        total_val = f"{float(raw_total):.2f}"
+        total_lbl = "TOTAL"
+        garment_count_str = str(grand_total_garments)
+    elif page_num and total_pages:
+        # Intermediate page — show page indicator instead of amount
+        total_val = f"Pg {page_num}/{total_pages}"
+        rng = garment_range
+        total_lbl = f"Items {rng[0]}-{rng[1]}" if rng else "TOTAL"
+        garment_count_str = str(total_garments_on_page)
+    else:
+        total_val = f"{float(order_data.get('total_amount', 0) or 0):.2f}"
+        total_lbl = "TOTAL"
+        garment_count_str = str(total_garments_on_page)
+
+    draw.text((col_x[0] + 15, text_y), total_lbl, fill=(0, 0, 0), font=font_hdr)
+    draw.text((col_x[1] + cw_bar // 2, text_y), garment_count_str, fill=(0, 0, 0), font=font_hdr, anchor="mt")
     draw.text((col_x[3] + cw_amt - 15, text_y), total_val, fill=(0, 0, 0), font=font_hdr, anchor="rt")
     y += total_h
 
@@ -398,13 +442,98 @@ def _build_whatsapp_receipt_image(order_data: dict) -> Image.Image:
     y += 45
     draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
 
+    # Crop image to actual content height (remove excess white space or ensure all rows visible)
+    final_h = min(h, y + 80)  # keep a small bottom margin
+    if final_h < h:
+        img = img.crop((0, 0, w, final_h))
+
     return img
+
+
+# Maximum garment rows in a single WhatsApp image receipt page.
+# Canvas height expands dynamically up to 40 rows per page.
+# Orders with more than 40 rows are paginated into multiple pages.
+_WA_ROWS_PER_PAGE = 40
+
+
+def generate_whatsapp_receipt_pages(order_data: dict) -> list:
+    """
+    Generate one or more A5 PNG receipt images, each containing at most
+    _WA_ROWS_PER_PAGE garment rows, so text is never too small to read.
+
+    Returns a list of file paths (one path per page image).
+    Page 1 gets the full branded navy header.
+    Continuation pages get a compact single-line header identifying the order.
+    """
+    import copy
+
+    items = order_data.get("items", [])
+
+    # Expand items into individual garment rows (one per physical unit)
+    all_garment_rows = []  # list of (item_dict, garment_index)
+    garment_counter = 1
+    for item in items:
+        qty = max(1, int(item.get("quantity", 1)))
+        for _ in range(qty):
+            all_garment_rows.append((item, garment_counter))
+            garment_counter += 1
+
+    total_garments = len(all_garment_rows)
+
+    if total_garments == 0:
+        # Nothing to render — produce a single blank-items receipt
+        path = generate_whatsapp_receipt(order_data)
+        return [path]
+
+    tmp = tempfile.gettempdir()
+    order_id = order_data.get("order_id", "")
+    pages = []
+
+    for page_idx, chunk_start in enumerate(range(0, total_garments, _WA_ROWS_PER_PAGE)):
+        chunk_rows = all_garment_rows[chunk_start: chunk_start + _WA_ROWS_PER_PAGE]
+        chunk_end  = chunk_start + len(chunk_rows)  # exclusive
+
+        # Build a synthetic order_data slice for this page
+        # We convert garment rows back into a compressed items list
+        synthetic_items = []
+        for (orig_item, garment_idx) in chunk_rows:
+            synthetic_items.append({
+                "cloth_type":      orig_item.get("cloth_type", ""),
+                "quantity":        1,                          # one row per unit
+                "price_per_unit":  orig_item.get("price_per_unit", 0),
+                "item_notes":      orig_item.get("item_notes", ""),
+                "_garment_index":  garment_idx,               # carry real barcode index
+            })
+
+        page_data = dict(order_data)
+        page_data["items"] = synthetic_items
+        page_data["_page_num"]    = page_idx + 1
+        page_data["_total_pages"] = (total_garments + _WA_ROWS_PER_PAGE - 1) // _WA_ROWS_PER_PAGE
+        page_data["_garment_range"] = (chunk_start + 1, chunk_end)
+        page_data["_total_garments"] = total_garments
+        # Total amount only on the last page
+        page_data["total_amount"] = (
+            float(order_data.get("total_amount", 0))
+            if chunk_end >= total_garments
+            else None
+        )
+
+        page_path = os.path.join(
+            tmp,
+            f"etoffe_wa_receipt_{order_id}_pg{page_idx + 1}.png"
+        )
+        img = _build_whatsapp_receipt_image(page_data)
+        img.save(page_path, "PNG", dpi=(300, 300))
+        pages.append(page_path)
+
+    return pages
 
 
 def generate_whatsapp_receipt(order_data: dict, output_path: str = None) -> str:
     """
-    Generate an A5 PNG receipt image matching dispatch challan layout with Étoffe digital header
-    specifically for WhatsApp sharing.
+    Generate a single WhatsApp receipt PNG.
+    For orders with many items, only the first _WA_ROWS_PER_PAGE rows are
+    included here — use generate_whatsapp_receipt_pages() for the full paginated set.
     Returns the path to the generated PNG image.
     """
     if output_path is None:
@@ -592,28 +721,34 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
     HDR_H = 5.5 * mm
     ROW_H = 4.8 * mm
     PAD   = 1.2 * mm
+    # Minimum y (bottom margin) before we must start a new page
+    # Reserve enough for TOTAL row + footer + bottom margin
+    BOTTOM_MARGIN = 15 * mm     # safe lower boundary
+    TOTAL_FOOTER_H = (5.5 + 5 + 4.5 + 1) * mm  # TOTAL row + footer lines
+    PAGE_BOTTOM = BOTTOM_MARGIN + TOTAL_FOOTER_H
 
-    # Table outer top-left corner; we'll track as we draw
+    def _draw_table_header(y_pos):
+        """Draw the table column header row at y_pos; return new y after header."""
+        c.setLineWidth(0.6)
+        c.rect(ML, y_pos - HDR_H, CONTENT_W, HDR_H, fill=0, stroke=1)
+        c.setFont(F_BOLD, S_HDR)
+        hy = y_pos - HDR_H + 1.5 * mm
+        c.drawString(col_x[0] + PAD,               hy, "Particulars")
+        c.drawCentredString(col_x[1] + CW_BAR / 2, hy, "Barcode")
+        c.drawCentredString(col_x[2] + CW_REM / 2, hy, "Remark")
+        c.drawRightString(col_x[3] + CW_AMT - PAD, hy, "Amount")
+        return y_pos - HDR_H
+
+    # Table outer top-left corner; track per-page segments for outer box drawing
     tbl_top = y
+    page_tbl_tops = [tbl_top]   # one entry per page segment
 
-    # ── Header row (outlined box, no fill, bold text) ─────────────────────────
-    c.setLineWidth(0.6)
-    c.rect(ML, y - HDR_H, CONTENT_W, HDR_H, fill=0, stroke=1)
-    # NOTE: full-height vertical column dividers are drawn AFTER the outer rect
-    # is known (i.e. after tbl_bottom is computed). We save col_x for that step.
+    y = _draw_table_header(y)
 
-    c.setFont(F_BOLD, S_HDR)
-    text_y = y - HDR_H + 1.5 * mm
-    c.drawString(col_x[0] + PAD,                     text_y, "Particulars")
-    c.drawCentredString(col_x[1] + CW_BAR / 2,       text_y, "Barcode")
-    c.drawCentredString(col_x[2] + CW_REM / 2,       text_y, "Remark")
-    c.drawRightString(col_x[3] + CW_AMT - PAD,       text_y, "Amount")
-    y -= HDR_H
-
-    # ── Data rows (borderless — no individual row outlines) ───────────────────
+    # ── Build all rows from order items ───────────────────────────────────────
     items = order_data.get("items", [])
-    garment_counter = 1          # running counter; advances by qty per item line
-    all_rows = []                # collect (particulars, barcode_str, remark, amount)
+    garment_counter = 1
+    all_rows = []
 
     for item in items:
         cloth_type  = str(item.get("cloth_type", ""))
@@ -623,7 +758,6 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
         particulars = cloth_type + " DC"
 
         for _ in range(qty):
-            # Each physical unit gets its OWN barcode — matches dispatch label
             barcode_str = f"P{order_id}-{garment_counter}"
             all_rows.append((
                 particulars,
@@ -631,13 +765,46 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
                 item_notes,
                 f"{rate:.2f}"
             ))
-            garment_counter += 1   # advance per physical unit
+            garment_counter += 1
 
     total_garments = garment_counter - 1
-    data_top = y
+
+    # ── Draw data rows, paginating when near the bottom margin ────────────────
+    # page_segments: list of (tbl_top, tbl_bottom) per page for outer box
+    page_segments = []   # (tbl_top_y, tbl_bottom_y) collected after each page
 
     c.setFont(F_NORM, S_NORM)
-    for row_part, row_bar, row_rem, row_amt in all_rows:
+    for row_idx, (row_part, row_bar, row_rem, row_amt) in enumerate(all_rows):
+        # Check if this row + TOTAL row would overflow the page
+        rows_remaining = len(all_rows) - row_idx
+        space_needed = ROW_H + TOTAL_FOOTER_H
+        if y - space_needed < PAGE_BOTTOM:
+            # Close current page table segment
+            seg_bottom = y
+            # Draw outer border + dividers for this page's segment
+            c.setLineWidth(0.6)
+            c.rect(ML, seg_bottom, CONTENT_W, page_tbl_tops[-1] - seg_bottom, fill=0, stroke=1)
+            c.setLineWidth(0.5)
+            for cx in col_x[1:]:
+                c.line(cx, seg_bottom, cx, page_tbl_tops[-1])
+            # "Continued on next page" note
+            c.setFont(F_ITALIC, S_SM)
+            c.drawRightString(ML + CONTENT_W, seg_bottom - 4 * mm,
+                              f"continued... ({row_idx} of {total_garments} items)")
+            # Start new page
+            c.showPage()
+            # Reset y to top of new page (full page height, no letterhead offset)
+            y = PAGE_H - TOP_OFFSET
+            new_tbl_top = y
+            page_tbl_tops.append(new_tbl_top)
+            # Redraw table header on new page
+            c.setFont(F_BOLD, S_NORM)
+            c.drawString(ML, y + 5 * mm,
+                         f"Order P{order_id} — continued (items {row_idx + 1}–{total_garments})")
+            y -= 8 * mm
+            y = _draw_table_header(y)
+            c.setFont(F_NORM, S_NORM)
+
         text_y = y - ROW_H + 1.5 * mm
         c.drawString(col_x[0] + PAD,               text_y, row_part)
         c.drawCentredString(col_x[1] + CW_BAR / 2, text_y, row_bar)
@@ -662,14 +829,13 @@ def generate_dispatch_challan_pdf(order_data: dict, output_path: str = None) -> 
     c.drawRightString(col_x[3] + CW_AMT - PAD,            text_y, total_val)
     y -= TOTAL_H
 
-    # Outer border + full-height internal column dividers
+    # Outer border + full-height internal column dividers for last (or only) page
     tbl_bottom = y
     c.setLineWidth(0.6)
-    c.rect(ML, tbl_bottom, CONTENT_W, tbl_top - tbl_bottom, fill=0, stroke=1)
-    # Draw vertical dividers from top of table to bottom (through header + data + total)
+    c.rect(ML, tbl_bottom, CONTENT_W, page_tbl_tops[-1] - tbl_bottom, fill=0, stroke=1)
     c.setLineWidth(0.5)
     for cx in col_x[1:]:
-        c.line(cx, tbl_bottom, cx, tbl_top)
+        c.line(cx, tbl_bottom, cx, page_tbl_tops[-1])
 
     # ── Footer: right-aligned, two lines ──────────────────────────────────────
     y -= 5 * mm
@@ -981,8 +1147,25 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
             tempfile.gettempdir(), f"victory_challan_img_{order_data['order_id']}.png"
         )
 
-    # A5 size at 300 DPI: 1754 x 2480 pixels
-    w, h = 1754, 2480
+    # --- Pre-compute canvas height from item count so rows are never clipped ---
+    _items_for_size = order_data.get("items", [])
+    _total_rows = sum(max(1, int(item.get("quantity", 1))) for item in _items_for_size)
+
+    _top_offset_px = 673          # 57 mm letterhead zone
+    _lh = 48
+    _addr_lines_max = 1 + 3 + 1   # TO + 3 addr + Phone
+    _addr_block_h = _addr_lines_max * _lh
+    _table_gap = 65
+    _tbl_hdr_h = 60
+    _row_h = 52
+    _total_row_h = 10 + 60
+    _footer_h = 60 + 45 + 40
+    _table_start = _top_offset_px + _addr_block_h + _table_gap
+    _needed_h = _table_start + _tbl_hdr_h + (_total_rows * _row_h) + _total_row_h + _footer_h
+
+    w = 1754
+    h = max(2480, _needed_h)   # at least A5; grow for long orders
+
     img = Image.new("RGB", (w, h), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
@@ -1155,6 +1338,11 @@ def generate_dispatch_challan_image(order_data: dict, output_path: str = None) -
     y += 45
     draw.text((ml + content_w, y), "Authorised Signatory", fill=(0, 0, 0), font=font_italic, anchor="rt")
 
+    # Crop to actual content height to remove excess whitespace
+    final_h = min(h, y + 80)
+    if final_h < h:
+        img = img.crop((0, 0, w, final_h))
+
     img.save(output_path, "PNG", dpi=(300, 300))
     return output_path
 
@@ -1238,8 +1426,10 @@ def _valid_parent(parent_window):
 
 def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
     """
-    Generate the normal receipt image, then prepare a WhatsApp Web chat.
-    Staff attach the image and message, ready for review.
+    Generate paginated receipt images and prepare a WhatsApp Web chat.
+    For orders with more items than _WA_ROWS_PER_PAGE, multiple images are
+    generated and attached sequentially so text stays readable.
+    Staff sends each page in turn.
     """
     from tkinter import messagebox
 
@@ -1252,7 +1442,7 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
         except Exception:
             pass
 
-    # Validate before creating a temporary receipt file.
+    # Validate before creating temporary receipt files.
     try:
         digits = normalize_whatsapp_phone(order_data.get("phone"))
     except ValueError as exc:
@@ -1263,20 +1453,29 @@ def send_whatsapp_receipt(order_data: dict, parent_window=None) -> str | None:
         )
         return None
 
-    # Generate WhatsApp-specific receipt with branded Étoffe header design
-    image_path = generate_whatsapp_receipt(order_data)
+    # Generate paginated WhatsApp receipt images
+    image_paths = generate_whatsapp_receipt_pages(order_data)
 
-    # 3. Format simplified receipt message (detailed breakdown is in the image)
     customer_name = order_data.get("name") or "Customer"
     order_id = order_data.get("order_id", "")
-    caption = (
-        f"Hello {customer_name},\n\n"
-        f"Here is your receipt for Order #{order_id}.\n\n"
-        f"Thank you for choosing ÉTOFFE LAUNDRY STUDIO 😊"
-    )
+    num_pages = len(image_paths)
 
-    _open_whatsapp_receipt_manual(digits, caption, image_path, parent_window)
-    return image_path
+    if num_pages == 1:
+        caption = (
+            f"Hello {customer_name},\n\n"
+            f"Here is your receipt for Order #{order_id}.\n\n"
+            f"Thank you for choosing ÉTOFFE LAUNDRY STUDIO 😊"
+        )
+        _open_whatsapp_receipt_manual(digits, caption, image_paths[0], parent_window)
+        return image_paths[0]
+    else:
+        caption = (
+            f"Hello {customer_name},\n\n"
+            f"Here is your receipt for Order #{order_id} ({num_pages} pages).\n\n"
+            f"Thank you for choosing ÉTOFFE LAUNDRY STUDIO 😊"
+        )
+        _open_whatsapp_receipt_pages_manual(digits, caption, image_paths, parent_window)
+        return image_paths[0]
 
 
 def send_whatsapp_ready_notification(order_data: dict, parent_window=None) -> bool:
@@ -1323,6 +1522,24 @@ def _open_whatsapp_receipt_manual(digits: str, caption: str, image_path: str, pa
         send_receipt(digits, image_path, caption)
     except Exception as exc:
         # Silently ignore errors from user closing the browser — that's normal workflow
+        err = str(exc).lower()
+        if "closed" in err or "target page" in err or "browser" in err:
+            return
+        messagebox.showerror("WhatsApp Web Error", str(exc), parent=_valid_parent(parent_window))
+        return
+
+
+def _open_whatsapp_receipt_pages_manual(digits: str, caption: str, image_paths: list, parent_window=None):
+    """Prepare a multi-page receipt by attaching all page images together in one WhatsApp chat.
+
+    The browser automation attaches all pages in a single preview session so staff can review
+    and send the complete receipt with one click.
+    """
+    from tkinter import messagebox
+    try:
+        from whatsapp_web import send_receipt_pages
+        send_receipt_pages(digits, image_paths, caption)
+    except Exception as exc:
         err = str(exc).lower()
         if "closed" in err or "target page" in err or "browser" in err:
             return

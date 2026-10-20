@@ -9,7 +9,7 @@ import time
 import logging
 
 from ui.theme   import COLORS, FONTS, STATUS_COLORS
-from ui.widgets import make_btn, make_entry, build_tree
+from ui.widgets import make_btn, make_entry, build_tree, center_window
 from ui.order_details import OrderDetailsPopup
 import database as db
 
@@ -257,10 +257,9 @@ class CustomerFormDialog(tk.Toplevel):
         self.bind("<Return>", lambda e: self._save())
 
     def _center(self):
-        self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        if not self.winfo_exists():
+            return
+        center_window(self, min_w=480, min_h=350)
 
     def _build(self):
         # Header banner
@@ -413,10 +412,9 @@ class CustomerDetailDialog(tk.Toplevel):
         self._center()
 
     def _center(self):
-        self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        if not self.winfo_exists():
+            return
+        center_window(self, default_w=900, default_h=620, min_w=750, min_h=450)
 
     def _build(self):
         # Header profile card
@@ -612,10 +610,9 @@ class CustomerMessageDialog(tk.Toplevel):
         self._center()
 
     def _center(self):
-        self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        if not self.winfo_exists():
+            return
+        center_window(self, default_w=520, default_h=380, min_w=480, min_h=350)
 
     def _build(self):
         card = tk.Frame(self, bg=COLORS["card_bg"], padx=18, pady=14)
@@ -715,10 +712,9 @@ class BulkMessageDialog(tk.Toplevel):
         self._center()
 
     def _center(self):
-        self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        if not self.winfo_exists():
+            return
+        center_window(self, default_w=520, default_h=440, min_w=480, min_h=350)
 
     def _build(self):
         hdr = tk.Frame(self, bg=COLORS["card_bg"], padx=18, pady=12)
@@ -872,10 +868,9 @@ class BulkProgressDialog(tk.Toplevel):
         threading.Thread(target=self._run_bulk_send, daemon=True).start()
 
     def _center(self):
-        self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        if not self.winfo_exists():
+            return
+        center_window(self, default_w=400, default_h=180, min_w=350, min_h=150)
 
     def _build(self):
         body = tk.Frame(self, bg=COLORS["card_bg"], padx=20, pady=20)

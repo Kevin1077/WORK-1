@@ -9,6 +9,7 @@ from datetime import datetime
 from PIL import Image, ImageTk
 
 from ui.theme import COLORS, FONTS, SHOP_NAME, SHOP_TAGLINE
+from ui.widgets import center_window
 
 from ui.dashboard import DashboardFrame
 from ui.new_order import NewOrderFrame
@@ -35,16 +36,10 @@ class AppWindow:
 
     def _setup_window(self):
         self.root.title("Étoffe Laundry — Management System")
-        self.root.geometry("1300x800")
-        self.root.minsize(1100, 680)
+        self.root.minsize(1000, 600)
         self.root.configure(bg=COLORS["bg"])
-        # Center on screen
-        self.root.update_idletasks()
-        w = self.root.winfo_width()
-        h = self.root.winfo_height()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        self.root.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        # Center safely within screen bounds
+        center_window(self.root, default_w=1300, default_h=800, min_w=1000, min_h=600)
         self.root.iconbitmap(default="")
 
     def _setup_styles(self):

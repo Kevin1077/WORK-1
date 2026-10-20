@@ -173,7 +173,41 @@ class ScrollableFrame(tk.Frame):
         self.canvas.itemconfig(self._win, width=event.width)
 
     def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        try:
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except tk.TclError:
+            pass
+
+
+def center_window(win, default_w=None, default_h=None, min_w=400, min_h=300):
+    """
+    Safely centers a window on screen and guarantees it is never positioned
+    outside the monitor screen.
+    - Clamps width & height to available screen area minus taskbar/border margins.
+    - Positions x >= 10 and y >= 10 so title bars and controls are always reachable and draggable.
+    """
+    win.update_idletasks()
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+
+    max_w = max(min_w, sw - 60)
+    max_h = max(min_h, sh - 80)
+
+    w = default_w if default_w else win.winfo_width()
+    h = default_h if default_h else win.winfo_height()
+
+    if w <= 1:
+        w = win.winfo_reqwidth()
+    if h <= 1:
+        h = win.winfo_reqheight()
+
+    w = min(max(w, min_w), max_w)
+    h = min(max(h, min_h), max_h)
+
+    x = max(10, (sw - w) // 2)
+    y = max(10, (sh - h) // 2)
+
+    win.geometry(f"{w}x{h}+{x}+{y}")
 
 
 # ── Treeview builder ──────────────────────────────────────────────────────────

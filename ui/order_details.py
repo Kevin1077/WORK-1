@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ui.theme   import COLORS, FONTS, STATUS_COLORS, STATUS_LIST
-from ui.widgets import make_btn
+from ui.widgets import make_btn, ScrollableFrame, center_window
 import database as db
 
 
@@ -16,21 +16,48 @@ class OrderDetailsPopup(tk.Toplevel):
         self.order_id   = order_id
         self.refresh_cb = refresh_cb
         self._order     = None
+        self._scroll    = None
 
         self.title(f"Order #{order_id} — Étoffe Laundry")
         self.configure(bg=COLORS["bg"])
-        self.resizable(False, False)
+        self.resizable(True, True)
+        self.minsize(750, 450)
         self.grab_set()
         self.focus_set()
+
+        # Keyboard & mousewheel shortcuts
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", lambda e: self._on_mousewheel_step(-1))
+        self.bind("<Button-5>", lambda e: self._on_mousewheel_step(1))
 
         self._load_and_build()
         self._center()
 
     def _center(self):
+        if not self.winfo_exists():
+            return
         self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        content_h = 0
+        if self._scroll and hasattr(self._scroll, "inner"):
+            content_h = self._scroll.inner.winfo_reqheight()
+        # Header (~65px) + footer (~65px) + paddings (~30px)
+        total_req_h = content_h + 160 if content_h > 0 else 620
+        center_window(self, default_w=940, default_h=total_req_h, min_w=750, min_h=450)
+
+    def _on_mousewheel(self, event):
+        if self._scroll and hasattr(self._scroll, "canvas"):
+            try:
+                self._scroll.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except tk.TclError:
+                pass
+
+    def _on_mousewheel_step(self, step):
+        if self._scroll and hasattr(self._scroll, "canvas"):
+            try:
+                self._scroll.canvas.yview_scroll(step, "units")
+            except tk.TclError:
+                pass
 
     # ── Data ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +76,7 @@ class OrderDetailsPopup(tk.Toplevel):
         tk.Frame(self, bg=COLORS["accent"], height=4).pack(fill="x")
 
         # ── Header ────────────────────────────────────────────────────────────
-        hdr = tk.Frame(self, bg=COLORS["card_bg"], padx=24, pady=16)
+        hdr = tk.Frame(self, bg=COLORS["card_bg"], padx=24, pady=14)
         hdr.pack(fill="x")
 
         tk.Label(hdr, text=f"Order #{o['order_id']}",
@@ -66,16 +93,36 @@ class OrderDetailsPopup(tk.Toplevel):
 
         tk.Frame(self, bg=COLORS["border"], height=1).pack(fill="x")
 
-        # ── Main content ───────────────────────────────────────────────────────
-        content = tk.Frame(self, bg=COLORS["bg"])
-        content.pack(fill="both", expand=True, padx=24, pady=20)
+        # ── Bottom action bar (pinned so it is ALWAYS visible and clickable) ──
+        footer_border = tk.Frame(self, bg=COLORS["border"], height=1)
+        footer_border.pack(side="bottom", fill="x")
+
+        footer = tk.Frame(self, bg=COLORS["card_bg"], padx=24, pady=12)
+        footer.pack(side="bottom", fill="x")
+
+        btn_row = tk.Frame(footer, bg=COLORS["card_bg"])
+        btn_row.pack(fill="x")
+
+        make_btn(btn_row, "✏️  Edit Order",           self._edit,             "edit").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "🖨️  Print Receipt",       self._print_receipt,    "neutral").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "🏷️  Print Dispatch Slip", self._print_dispatch,   "neutral").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "🗑️  Delete",              self._delete,           "danger").pack(side="left", padx=(0, 8))
+        make_btn(btn_row, "✕  Close",                self.destroy,           "neutral").pack(side="right", padx=(8, 0))
+        make_btn(btn_row, "📲  WhatsApp Receipt (PNG)", self._whatsapp_receipt, "success").pack(side="right")
+
+        # ── Scrollable middle content ──────────────────────────────────────────
+        self._scroll = ScrollableFrame(self, bg=COLORS["bg"])
+        self._scroll.pack(fill="both", expand=True)
+        content = self._scroll.inner
+        content.config(padx=24, pady=16)
 
         # Two-column top section
         top = tk.Frame(content, bg=COLORS["bg"])
         top.pack(fill="x", pady=(0, 16))
 
         # Customer card
-        cust_card = tk.Frame(top, bg=COLORS["card_bg"], padx=16, pady=14)
+        cust_card = tk.Frame(top, bg=COLORS["card_bg"], padx=16, pady=14,
+                             highlightthickness=1, highlightbackground=COLORS["border"])
         cust_card.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
         tk.Label(cust_card, text="Customer Details",
@@ -98,7 +145,8 @@ class OrderDetailsPopup(tk.Toplevel):
                 row=r, column=1, sticky="nw", pady=2)
 
         # Order meta card
-        meta_card = tk.Frame(top, bg=COLORS["card_bg"], padx=16, pady=14)
+        meta_card = tk.Frame(top, bg=COLORS["card_bg"], padx=16, pady=14,
+                             highlightthickness=1, highlightbackground=COLORS["border"])
         meta_card.pack(side="left", fill="both", expand=True, padx=(10, 0))
 
         tk.Label(meta_card, text="Order Information",
@@ -140,12 +188,13 @@ class OrderDetailsPopup(tk.Toplevel):
         )
 
         # ── Items table ────────────────────────────────────────────────────────
-        tk.Frame(content, bg=COLORS["border"], height=1).pack(fill="x", pady=(0, 12))
+        tk.Frame(content, bg=COLORS["border"], height=1).pack(fill="x", pady=(4, 12))
         tk.Label(content, text="Order Items",
                  bg=COLORS["bg"], fg=COLORS["accent"],
                  font=FONTS["bold"]).pack(anchor="w", pady=(0, 8))
 
-        tbl_frame = tk.Frame(content, bg=COLORS["card_bg"])
+        tbl_frame = tk.Frame(content, bg=COLORS["card_bg"],
+                             highlightthickness=1, highlightbackground=COLORS["border"])
         tbl_frame.pack(fill="x")
 
         # Header row
@@ -175,12 +224,12 @@ class OrderDetailsPopup(tk.Toplevel):
                          fg=COLORS["text"], font=FONTS["default"],
                          width=w // 10, anchor="w", padx=8, pady=8).pack(side="left")
 
-            # Per-unit checkboxes in a horizontal strip inside last column space
+            # Per-unit checkboxes in a horizontal/wrapped strip inside last column space
             units = item.get("units", [])
             chk_frame = tk.Frame(row_f, bg=row_bg)
             chk_frame.pack(side="left", padx=6, pady=4)
 
-            for unit in units:
+            for idx, unit in enumerate(units):
                 uid   = unit["unit_id"]
                 u_num = unit["unit_number"]
                 chk_var = tk.BooleanVar(value=bool(unit.get("returned", 0)))
@@ -190,7 +239,7 @@ class OrderDetailsPopup(tk.Toplevel):
                         db.update_unit_returned(uid_, v_.get())
                     return _cmd
 
-                tk.Checkbutton(
+                cb = tk.Checkbutton(
                     chk_frame,
                     text=f"#{u_num}",
                     variable=chk_var,
@@ -198,7 +247,11 @@ class OrderDetailsPopup(tk.Toplevel):
                     bg=row_bg, fg=COLORS["text"], selectcolor=COLORS["input_bg"],
                     activebackground=row_bg, activeforeground=COLORS["text"],
                     font=FONTS["small"], cursor="hand2"
-                ).pack(side="left", padx=(0, 6))
+                )
+                if len(units) > 6:
+                    cb.grid(row=idx // 6, column=idx % 6, sticky="w", padx=(0, 4), pady=1)
+                else:
+                    cb.pack(side="left", padx=(0, 6))
 
         # Total row
         total_row = tk.Frame(tbl_frame, bg=COLORS["accent"])
@@ -209,18 +262,6 @@ class OrderDetailsPopup(tk.Toplevel):
         tk.Label(total_row, text=f"₹{o['total_amount']:.2f}",
                  bg=COLORS["accent"], fg=COLORS["card_bg"],
                  font=FONTS["large"]).pack(side="right", padx=20)
-
-        # ── Action buttons ─────────────────────────────────────────────────────
-        tk.Frame(content, bg=COLORS["border"], height=1).pack(fill="x", pady=(16, 12))
-        btn_row = tk.Frame(content, bg=COLORS["bg"])
-        btn_row.pack(fill="x")
-
-        make_btn(btn_row, "✏️  Edit Order",           self._edit,             "edit").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "🖨️  Print Receipt",       self._print_receipt,    "neutral").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "🏷️  Print Dispatch Slip", self._print_dispatch,   "neutral").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "🗑️  Delete",              self._delete,           "danger").pack(side="left", padx=(0, 8))
-        make_btn(btn_row, "✕  Close",                self.destroy,           "neutral").pack(side="right", padx=(8, 0))
-        make_btn(btn_row, "📲  WhatsApp Receipt (PNG)", self._whatsapp_receipt, "success").pack(side="right")
 
     # ── Button handlers ────────────────────────────────────────────────────────
 

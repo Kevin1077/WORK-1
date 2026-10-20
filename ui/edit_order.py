@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from ui.theme   import COLORS, FONTS, STATUS_LIST
 
 PAYMENT_METHODS = ["Cash", "GPay", "Unpaid"]
-from ui.widgets import make_btn, make_entry, ScrollableFrame
+from ui.widgets import make_btn, make_entry, ScrollableFrame, center_window
 
 try:
     from tkcalendar import DateEntry
@@ -137,9 +137,15 @@ class EditOrderPopup(tk.Toplevel):
 
         self.title(f"Edit Order #{order_id} — Étoffe Laundry")
         self.configure(bg=COLORS["bg"])
-        self.geometry("900x700")
+        self.resizable(True, True)
+        self.minsize(750, 450)
         self.grab_set()
         self.focus_set()
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", lambda e: self._on_mousewheel_step(-1))
+        self.bind("<Button-5>", lambda e: self._on_mousewheel_step(1))
 
         order = db.get_order_full(order_id)
         if not order:
@@ -152,10 +158,24 @@ class EditOrderPopup(tk.Toplevel):
         self._center()
 
     def _center(self):
+        if not self.winfo_exists():
+            return
         self.update_idletasks()
-        w, h = self.winfo_width(), self.winfo_height()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"+{(sw - w)//2}+{(sh - h)//2}")
+        center_window(self, default_w=920, default_h=700, min_w=750, min_h=450)
+
+    def _on_mousewheel(self, event):
+        if hasattr(self, "_scroll") and self._scroll and hasattr(self._scroll, "canvas"):
+            try:
+                self._scroll.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except tk.TclError:
+                pass
+
+    def _on_mousewheel_step(self, step):
+        if hasattr(self, "_scroll") and self._scroll and hasattr(self._scroll, "canvas"):
+            try:
+                self._scroll.canvas.yview_scroll(step, "units")
+            except tk.TclError:
+                pass
 
     # ── Build UI ───────────────────────────────────────────────────────────────
 
@@ -172,9 +192,9 @@ class EditOrderPopup(tk.Toplevel):
         tk.Frame(self, bg=COLORS["border"], height=1).pack(fill="x")
 
         # Scrollable body
-        scroll = ScrollableFrame(self, bg=COLORS["bg"])
-        scroll.pack(fill="both", expand=True)
-        body = scroll.inner
+        self._scroll = ScrollableFrame(self, bg=COLORS["bg"])
+        self._scroll.pack(fill="both", expand=True)
+        body = self._scroll.inner
         body.config(padx=24, pady=20)
 
         # ── Customer section ───────────────────────────────────────────────────

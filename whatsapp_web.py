@@ -386,8 +386,16 @@ def _open_chat_url(page, phone: str, text: str = "") -> None:
         ) from exc
 
 
-def _attach_image(page, image_path: Path) -> None:
-    """Attach an image into WhatsApp Web using the Photos & videos attachment input."""
+def _attach_images(page, image_paths) -> None:
+    """Attach one or more images into WhatsApp Web using the Photos & videos attachment input."""
+    if isinstance(image_paths, (str, Path)):
+        files = [str(Path(image_paths).expanduser().resolve())]
+    else:
+        files = [str(Path(p).expanduser().resolve()) for p in image_paths]
+
+    if not files:
+        return
+
     attached = False
 
     # Ensure composer is ready
@@ -423,8 +431,8 @@ def _attach_image(page, image_path: Path) -> None:
                 with page.expect_file_chooser(timeout=7_000) as fc_info:
                     img_option.click()
                 file_chooser = fc_info.value
-                file_chooser.set_files(str(image_path))
-                LOGGER.info("Successfully attached image via Photos & videos file chooser.")
+                file_chooser.set_files(files)
+                LOGGER.info("Successfully attached %d image(s) via Photos & videos file chooser.", len(files))
                 attached = True
     except Exception as exc:
         LOGGER.debug("File chooser attachment method failed, trying strict DOM image input targeting: %s", exc)
@@ -448,8 +456,8 @@ def _attach_image(page, image_path: Path) -> None:
                         el.style.cssText = 'display:block!important;opacity:1!important;visibility:visible!important;';
                     }
                 """, target_input)
-                target_input.set_input_files(str(image_path))
-                LOGGER.info("Attached image via direct DOM image input element targeting.")
+                target_input.set_input_files(files)
+                LOGGER.info("Attached %d image(s) via direct DOM image input element targeting.", len(files))
                 attached = True
             else:
                 LOGGER.debug("No image input found, opening attach menu again...")
@@ -462,7 +470,7 @@ def _attach_image(page, image_path: Path) -> None:
                         with page.expect_file_chooser(timeout=5_000) as fc_info:
                             img_btn.click()
                         file_chooser = fc_info.value
-                        file_chooser.set_files(str(image_path))
+                        file_chooser.set_files(files)
                         attached = True
 
             if not attached:
@@ -475,7 +483,7 @@ def _attach_image(page, image_path: Path) -> None:
         page.wait_for_selector(_SEL_ATTACH_PREVIEW, timeout=_ATTACH_READY_MS)
         LOGGER.debug("Attachment preview visible.")
     except Exception:
-        LOGGER.debug("Attachment preview loading slowly â€” please verify before pressing Send.")
+        LOGGER.debug("Attachment preview loading slowly — please verify before pressing Send.")
 
     try:
         page.bring_to_front()
@@ -483,7 +491,12 @@ def _attach_image(page, image_path: Path) -> None:
         pass
 
 
-# â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+def _attach_image(page, image_path: Path) -> None:
+    """Attach an image into WhatsApp Web using the Photos & videos attachment input (compatibility wrapper)."""
+    return _attach_images(page, image_path)
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def send_receipt(phone_number: str, image_path: str, message: str) -> None:
     return _run_pw(_send_receipt_core, phone_number, image_path, message)
@@ -509,6 +522,42 @@ def _send_receipt_core(phone_number: str, image_path: str, message: str) -> None
         raise
 
     LOGGER.info("WhatsApp receipt prepared & attached in %.2fs", time.perf_counter() - t0)
+
+
+def send_receipt_pages(phone_number: str, image_paths: list, message: str) -> None:
+    """Send a multi-page receipt by attaching all image pages together in WhatsApp Web.
+
+    Opens the WhatsApp chat once, attaches all page images, and moves the caption
+    to the final receipt page so staff can review and send the complete receipt with one click.
+    """
+    return _run_pw(_send_receipt_pages_core, phone_number, image_paths, message)
+
+def _send_receipt_pages_core(phone_number: str, image_paths: list, message: str) -> None:
+    t0 = time.perf_counter()
+    phone = _normalise_phone(phone_number)
+
+    if not image_paths:
+        return
+
+    validated = [_validate_image(p) for p in image_paths]
+
+    try:
+        page = _get_page()
+        _ensure_logged_in(page)
+
+        _open_chat_url(page, phone, message)
+        _attach_images(page, validated)
+
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+    except Exception as exc:
+        if "closed" in str(exc).lower():
+            raise WhatsAppWebError("The browser tab was closed before the operation could finish.") from exc
+        raise
+
+    LOGGER.info("WhatsApp %d-page receipt prepared & attached in %.2fs", len(validated), time.perf_counter() - t0)
 
 
 def prepare_message(phone_number: str, message: str) -> None:

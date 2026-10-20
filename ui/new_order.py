@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 PAYMENT_METHODS = ["Cash", "GPay", "Unpaid"]
 
 from ui.theme   import COLORS, FONTS
-from ui.widgets import make_btn, make_entry, ScrollableFrame
+from ui.widgets import make_btn, make_entry, ScrollableFrame, center_window
 
 try:
     from tkcalendar import DateEntry
@@ -698,9 +698,7 @@ class NewOrderFrame(tk.Frame):
         win.resizable(False, False)
         win.grab_set()
 
-        w, h = 420, 260
-        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-        win.geometry(f"{w}x{h}+{(sw - w)//2}+{(sh - h)//2}")
+        center_window(win, default_w=420, default_h=260, min_w=380, min_h=240)
 
         hdr = tk.Frame(win, bg=COLORS["card_bg"], padx=20, pady=16)
         hdr.pack(fill="x")
