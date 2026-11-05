@@ -379,7 +379,7 @@ class NewOrderFrame(tk.Frame):
                                      font=FONTS["small_bold"])
         self._cust_badge.pack(side="left", padx=12)
 
-        # Phone lookup row
+        # ── Phone lookup row ───────────────────────────────────────────────
         ph_row = tk.Frame(card, bg=COLORS["card_bg"])
         ph_row.pack(fill="x", pady=(0, 10))
 
@@ -403,6 +403,12 @@ class NewOrderFrame(tk.Frame):
         self._place_var   = tk.StringVar()
         self._address_var = tk.StringVar()
 
+        # Autocomplete state for name popup
+        self._name_popup      = None
+        self._name_popup_lb   = None
+        self._name_popup_data = []   # list of customer dicts matching current search
+        self._name_hide_job   = None
+
         def lbl(parent, text):
             tk.Label(parent, text=text, bg=COLORS["card_bg"],
                      fg=COLORS["text_dim"], font=FONTS["small_bold"],
@@ -414,6 +420,12 @@ class NewOrderFrame(tk.Frame):
         lbl(r1, "Name *")
         self._name_entry = make_entry(r1, textvariable=self._name_var, width=24)
         self._name_entry.pack(side="left", padx=(0, 20), ipady=5)
+        # Attach live name autocomplete to the Name field
+        self._name_var.trace_add("write", lambda *a: self._on_name_search())
+        self._name_entry.bind("<Down>",    lambda e: self._focus_name_popup())
+        self._name_entry.bind("<Escape>",  lambda e: self._hide_name_popup())
+        self._name_entry.bind("<FocusOut>",
+            lambda e: self._schedule_hide_name_popup())
         lbl(r1, "Place")
         self._place_entry = make_entry(r1, textvariable=self._place_var, width=22)
         self._place_entry.pack(side="left", ipady=5)
@@ -605,6 +617,143 @@ class NewOrderFrame(tk.Frame):
         self._place_var.set("")
         self._address_var.set("")
         self._cust_badge.config(text="", bg=COLORS["card_bg"])
+
+    # ── Name search autocomplete ────────────────────────────────────────────────
+
+    def _on_name_search(self):
+        """Called on every keystroke in the Name field — show matching customers."""
+        typed = self._name_var.get().strip()
+        if not typed:
+            self._hide_name_popup()
+            return
+        matches = db.search_customers_by_name(typed)
+        self._name_popup_data = matches
+        if matches:
+            self._show_name_popup(matches)
+        else:
+            self._hide_name_popup()
+
+    def _show_name_popup(self, matches):
+        """Create or update the floating autocomplete popup for name search."""
+        entry = self._name_entry
+        entry.update_idletasks()
+        x = entry.winfo_rootx()
+        y = entry.winfo_rooty() + entry.winfo_height()
+        w = max(entry.winfo_width(), 260)
+
+        if self._name_popup is None or not self._name_popup.winfo_exists():
+            self._name_popup = tk.Toplevel(entry)
+            self._name_popup.wm_overrideredirect(True)
+            self._name_popup.wm_attributes("-topmost", True)
+            frm = tk.Frame(self._name_popup,
+                           bg=COLORS["border2"], bd=1, relief="solid")
+            frm.pack(fill="both", expand=True)
+            sb = tk.Scrollbar(frm, orient="vertical")
+            self._name_popup_lb = tk.Listbox(
+                frm, yscrollcommand=sb.set,
+                bg=COLORS["input_bg"], fg=COLORS["text"],
+                selectbackground=COLORS["accent"],
+                selectforeground=COLORS["card_bg"],
+                font=FONTS["default"],
+                relief="flat", bd=0, activestyle="none",
+                highlightthickness=0,
+            )
+            sb.config(command=self._name_popup_lb.yview)
+            self._name_popup_lb.pack(side="left", fill="both", expand=True)
+            sb.pack(side="right", fill="y")
+            self._name_popup_lb.bind("<Button-1>",
+                lambda e: self._name_popup_lb.after(10, self._pick_name_from_popup))
+            self._name_popup_lb.bind("<Return>",  lambda e: self._pick_name_from_popup())
+            self._name_popup_lb.bind("<FocusIn>",  lambda e: self._cancel_hide_name_popup())
+            self._name_popup_lb.bind("<FocusOut>", lambda e: self._schedule_hide_name_popup())
+            self._name_popup_lb.bind("<Escape>",
+                lambda e: (self._hide_name_popup(), self._name_search_entry.focus_set()))
+
+        self._name_popup_lb.delete(0, "end")
+        for c in matches:
+            label = f"{c['name']}  |  {c['phone']}"
+            if c.get("place"):
+                label += f"  |  {c['place']}"
+            self._name_popup_lb.insert("end", label)
+
+        visible = min(len(matches), 8)
+        row_px = 22
+        popup_h = visible * row_px + 4
+        self._name_popup_lb.config(height=visible)
+        self._name_popup.geometry(f"{w}x{popup_h}+{x}+{y}")
+        self._name_popup.deiconify()
+
+    def _hide_name_popup(self):
+        self._cancel_hide_name_popup()
+        if self._name_popup and self._name_popup.winfo_exists():
+            self._name_popup.withdraw()
+
+    def _cancel_hide_name_popup(self):
+        if self._name_hide_job is not None:
+            try:
+                self.after_cancel(self._name_hide_job)
+            except Exception:
+                pass
+            self._name_hide_job = None
+
+    def _schedule_hide_name_popup(self):
+        self._cancel_hide_name_popup()
+        self._name_hide_job = self.after(150, self._hide_name_popup)
+
+    def _focus_name_popup(self):
+        """Move keyboard focus into the name popup listbox."""
+        self._cancel_hide_name_popup()
+        if (self._name_popup and self._name_popup.winfo_exists()
+                and self._name_popup.state() != "withdrawn"
+                and self._name_popup_lb and self._name_popup_lb.winfo_exists()):
+            self._name_popup_lb.focus_set()
+            if self._name_popup_lb.size() > 0:
+                self._name_popup_lb.selection_clear(0, "end")
+                self._name_popup_lb.selection_set(0)
+                self._name_popup_lb.activate(0)
+                self._name_popup_lb.see(0)
+            return "break"
+
+    def _pick_name_from_popup(self):
+        """Select a customer from the name popup and fill all fields."""
+        self._cancel_hide_name_popup()
+        if self._name_popup_lb and self._name_popup_lb.winfo_exists():
+            sel = self._name_popup_lb.curselection()
+            if not sel and self._name_popup_lb.size() > 0:
+                active = self._name_popup_lb.index("active")
+                if active is not None and 0 <= active < self._name_popup_lb.size():
+                    sel = (active,)
+            if sel and sel[0] < len(self._name_popup_data):
+                cust = self._name_popup_data[sel[0]]
+                self._fill_customer(cust)
+        self._hide_name_popup()
+        self._name_entry.focus_set()
+        return "break"
+
+    def _pick_name_first(self):
+        """Select the first name suggestion if popup is visible."""
+        if (self._name_popup and self._name_popup.winfo_exists()
+                and self._name_popup.state() != "withdrawn"
+                and self._name_popup_lb and self._name_popup_lb.size() > 0
+                and self._name_popup_data):
+            self._fill_customer(self._name_popup_data[0])
+            self._hide_name_popup()
+
+    def _fill_customer(self, cust: dict):
+        """Fill all customer fields from a customer dict and mark as existing."""
+        self._cust_id = cust["customer_id"]
+        self._phone_var.set(cust.get("phone", ""))
+        # Set name without re-triggering the popup (suppress the trace temporarily)
+        self._name_var.set(cust.get("name", ""))
+        self._place_var.set(cust.get("place", ""))
+        self._address_var.set(cust.get("address", ""))
+        for e in self._cust_fields:
+            e.config(state="normal")
+        self._cust_badge.config(
+            text="  ✔ Existing Customer  ",
+            bg=COLORS["success"], fg=COLORS["text"]
+        )
+
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 

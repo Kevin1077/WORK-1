@@ -239,6 +239,20 @@ def update_customer(cid, name, phone, place="", address=""):
         )
 
 
+def search_customers_by_name(name: str) -> list:
+    """Return up to 20 customers whose name contains the search string (case-insensitive)."""
+    if not name or not name.strip():
+        return []
+    like = f"%{name.strip()}%"
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT customer_id, name, phone, place, address "
+            "FROM customers WHERE name LIKE ? ORDER BY name LIMIT 20",
+            (like,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── Price List ─────────────────────────────────────────────────────────────────
 
 def get_all_prices():

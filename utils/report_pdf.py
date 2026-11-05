@@ -1,12 +1,12 @@
 """
 utils/report_pdf.py — Date-range report PDF generator for ÉTOFFE LAUNDRY STUDIO
-Creates an A4 landscape PDF with an Excel-like table of orders.
+Creates an A4 portrait PDF with an Excel-like table of orders.
 """
 import os
 import tempfile
 from datetime import datetime
 
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.platypus import (
@@ -87,7 +87,7 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
 
     doc = SimpleDocTemplate(
         output_path,
-        pagesize=landscape(A4),
+        pagesize=A4,
         rightMargin=15 * mm, leftMargin=15 * mm,
         topMargin=15 * mm, bottomMargin=15 * mm,
     )
@@ -149,12 +149,12 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
     # Summary row
     total_revenue = sum(r.get("total_amount", 0) for r in rows)
     table_data.append([
-        "", "", "", "", f"Total Orders: {len(rows)}",
+        f"Total Orders: {len(rows)}", "", "", "", "",
         f"₹{total_revenue:,.2f}", "", ""
     ])
 
-    # Column widths (landscape A4 ~ 277mm usable)
-    col_w = [16 * mm, 22 * mm, 28 * mm, 55 * mm, 38 * mm, 32 * mm, 28 * mm, 28 * mm]
+    # Column widths (portrait A4 ~ 180mm usable)
+    col_w = [12 * mm, 18 * mm, 24 * mm, 46 * mm, 30 * mm, 24 * mm, 14 * mm, 12 * mm]
     tbl = Table(table_data, colWidths=col_w, repeatRows=1)
     tbl.setStyle(TableStyle([
         # Header
@@ -172,9 +172,12 @@ def generate_date_report(rows: list, from_date: str, to_date: str, output_path: 
         ("TEXTCOLOR",  (0, -1), (-1, -1), colors.white),
         ("FONTNAME",   (0, -1), (-1, -1), FONT_BOLD),
         ("FONTSIZE",   (0, -1), (-1, -1), 9),
+        # Span "Total Orders" label across first 5 cols
+        ("SPAN",  (0, -1), (4, -1)),
+        ("ALIGN", (0, -1), (4, -1), "LEFT"),
         # Alignment
-        ("ALIGN", (0, 0), (0, -1), "CENTER"),   # S.No
-        ("ALIGN", (1, 0), (1, -1), "CENTER"),   # Order #
+        ("ALIGN", (0, 0), (0, -2), "CENTER"),   # S.No
+        ("ALIGN", (1, 0), (1, -2), "CENTER"),   # Order #
         ("ALIGN", (5, 0), (5, -1), "RIGHT"),    # Total
         # Grid
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
@@ -213,7 +216,7 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
 
     doc = SimpleDocTemplate(
         output_path,
-        pagesize=landscape(A4),
+        pagesize=A4,
         rightMargin=15 * mm, leftMargin=15 * mm,
         topMargin=15 * mm, bottomMargin=15 * mm,
     )
@@ -236,7 +239,7 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
 
     if mode == "item_status":
         header = ["S.No", "Order #", "Date", "Customer", "Item / Cloth Type", "Unit #"]
-        col_w = [13*mm, 20*mm, 26*mm, 85*mm, 95*mm, 22*mm]
+        col_w = [12*mm, 18*mm, 24*mm, 44*mm, 64*mm, 18*mm]
         table_data = [header]
         for i, row in enumerate(rows, start=1):
             od = row.get("order_date", "")
@@ -255,7 +258,7 @@ def generate_search_report(rows: list, query_desc: str, mode: str, output_path: 
         table_data.append(["", "", "", "", f"Total: {len(rows)}", ""])
     else:
         header = ["S.No", "Order #", "Date", "Customer", "Phone", "Total (₹)", "Status", "Payment"]
-        col_w = [13*mm, 20*mm, 26*mm, 55*mm, 36*mm, 30*mm, 28*mm, 28*mm]
+        col_w = [12*mm, 18*mm, 24*mm, 46*mm, 28*mm, 22*mm, 16*mm, 14*mm]
         table_data = [header]
         for i, row in enumerate(rows, start=1):
             od = row.get("order_date", "")
