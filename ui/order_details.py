@@ -187,6 +187,13 @@ class OrderDetailsPopup(tk.Toplevel):
             row=r_next + 1, column=1, sticky="w", pady=(6, 0)
         )
 
+        # Only show the quick "Mark Ready + WhatsApp" button when order isn't already ready
+        if o.get("status") != "Ready":
+            make_btn(
+                meta_card, "📲  Mark Ready & Notify",
+                self._mark_ready_and_notify, "primary"
+            ).grid(row=r_next + 2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
         # ── Items table ────────────────────────────────────────────────────────
         tk.Frame(content, bg=COLORS["border"], height=1).pack(fill="x", pady=(4, 12))
         tk.Label(content, text="Order Items",
@@ -293,6 +300,48 @@ class OrderDetailsPopup(tk.Toplevel):
                 messagebox.showerror("WhatsApp Error", str(exc), parent=self)
         self.destroy()
         # Re-open with fresh data
+        OrderDetailsPopup(self.master, self.order_id, self.refresh_cb)
+
+    def _mark_ready_and_notify(self):
+        """Set order status to Ready and immediately open WhatsApp with the ready message."""
+        from tkinter import messagebox
+
+        # Guard: all items must be returned first
+        if not db.are_all_items_returned(self.order_id):
+            messagebox.showwarning(
+                "Items Pending Wash",
+                "Cannot mark as 'Ready'!\n\n"
+                "Some clothes in this order are still in washing facilities.\n"
+                "Please check all item checkboxes once every item is returned.",
+                parent=self,
+            )
+            return
+
+        # Confirm before changing status
+        order = db.get_order_full(self.order_id)
+        customer = order.get("name", "this customer") if order else "this customer"
+        if not messagebox.askyesno(
+            "Mark as Ready",
+            f"Mark Order #{self.order_id} as Ready and send a WhatsApp notification to {customer}?",
+            parent=self,
+        ):
+            return
+
+        # Save status to DB
+        db.update_order_status(self.order_id, "Ready")
+        if self.refresh_cb:
+            self.refresh_cb()
+
+        # Send WhatsApp ready notification (opens WhatsApp Web)
+        try:
+            from utils.receipt import send_whatsapp_ready_notification
+            order = db.get_order_full(self.order_id)  # fresh data with new status
+            send_whatsapp_ready_notification(order, parent_window=self)
+        except Exception as exc:
+            messagebox.showerror("WhatsApp Error", str(exc), parent=self)
+
+        # Re-open popup with refreshed data (status now shows Ready)
+        self.destroy()
         OrderDetailsPopup(self.master, self.order_id, self.refresh_cb)
 
     def _edit(self):

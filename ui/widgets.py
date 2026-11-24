@@ -181,17 +181,38 @@ class ScrollableFrame(tk.Frame):
 
 def center_window(win, default_w=None, default_h=None, min_w=400, min_h=300):
     """
-    Safely centers a window on screen and guarantees it is never positioned
-    outside the monitor screen.
-    - Clamps width & height to available screen area minus taskbar/border margins.
-    - Positions x >= 10 and y >= 10 so title bars and controls are always reachable and draggable.
+    Safely centers a window within the usable work area (screen minus taskbar)
+    so footer buttons are never hidden behind the Windows taskbar.
+    - Uses the Windows Work Area via SystemParametersInfoW on Windows; falls
+      back to screen dimensions minus a safe margin on other platforms.
+    - Clamps width & height to the usable work area.
+    - Positions x >= 10 and y >= 10 so title bars are always reachable.
     """
     win.update_idletasks()
-    sw = win.winfo_screenwidth()
-    sh = win.winfo_screenheight()
 
-    max_w = max(min_w, sw - 60)
-    max_h = max(min_h, sh - 80)
+    # --- Determine usable work area ----------------------------------------
+    try:
+        import ctypes
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        # SPI_GETWORKAREA = 0x0030
+        ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
+        wa_left   = rect.left
+        wa_top    = rect.top
+        wa_right  = rect.right
+        wa_bottom = rect.bottom
+    except Exception:
+        # Fallback for non-Windows: leave a generous margin for taskbar/docks
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        wa_left, wa_top, wa_right, wa_bottom = 10, 10, sw - 10, sh - 60
+
+    wa_w = wa_right  - wa_left
+    wa_h = wa_bottom - wa_top
+
+    # Allow a small inner margin so the window never sits flush against edges
+    max_w = max(min_w, wa_w - 20)
+    max_h = max(min_h, wa_h - 20)
 
     w = default_w if default_w else win.winfo_width()
     h = default_h if default_h else win.winfo_height()
@@ -204,8 +225,9 @@ def center_window(win, default_w=None, default_h=None, min_w=400, min_h=300):
     w = min(max(w, min_w), max_w)
     h = min(max(h, min_h), max_h)
 
-    x = max(10, (sw - w) // 2)
-    y = max(10, (sh - h) // 2)
+    # Center within work area
+    x = wa_left + max(10, (wa_w - w) // 2)
+    y = wa_top  + max(10, (wa_h - h) // 2)
 
     win.geometry(f"{w}x{h}+{x}+{y}")
 

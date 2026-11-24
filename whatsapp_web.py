@@ -118,6 +118,17 @@ _pw_task_q: queue.Queue = queue.Queue()
 _pw_worker: threading.Thread | None = None
 _pw_worker_lock = threading.Lock()
 
+# Pre-import greenlet and playwright.sync_api on the MAIN thread at module load
+# time so that their DLLs are already in sys.modules when the background worker
+# thread tries to use them.  On some Windows machines an Application Control
+# policy blocks DLL loads from non-main threads, but allows the same DLL once
+# it has already been mapped into the process by the main thread.
+try:
+    import greenlet as _greenlet_preload          # noqa: F401 — side-effect import only
+    from playwright.sync_api import sync_playwright as _sw_preload  # noqa: F401
+except Exception:
+    pass  # If Playwright truly is not installed the error will surface on first use
+
 def _pw_worker_loop() -> None:
     while True:
         result_q, fn, args, kwargs = _pw_task_q.get()
